@@ -28,6 +28,12 @@ _LOGGER = logging.getLogger(__name__)
 # Heartbeat interval in seconds (server expects <= 60 s)
 _HEARTBEAT_INTERVAL = 30
 
+# Timeout for REST API calls
+_HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+# Timeout for the WebSocket upgrade handshake
+_WS_CONNECT_TIMEOUT = 20
+
 
 class EnionAuthError(Exception):
     """Raised when login fails."""
@@ -58,7 +64,11 @@ class EnionClient:
         Returns the parsed JSON body which contains the WS token.
         """
         payload = {"email": email, "password": password, "language": "en"}
-        async with self._session.post(API_LOGIN, json=payload) as resp:
+        async with self._session.post(
+            API_LOGIN, 
+            json=payload, 
+            timeout=_HTTP_TIMEOUT
+        ) as resp:
             if resp.status == 401:
                 raise EnionAuthError("Invalid credentials")
             if resp.status != 200:
@@ -75,7 +85,10 @@ class EnionClient:
           { "user": {"id": 2628, ...}, "token": <str|null>,
             "devices": [...], "locations": [{"id": 1938, ...}], ... }
         """
-        async with self._session.get(API_ME) as resp:
+        async with self._session.get(
+            API_ME, 
+            timeout=_HTTP_TIMEOUT
+        ) as resp:
             if resp.status == 401:
                 raise EnionAuthError("Session expired")
             if resp.status != 200:
@@ -142,6 +155,9 @@ class EnionWebSocket:
         self._heartbeat_task: asyncio.Task | None = None
         self._ref = 0
         self._connected = False
+        # Set to True before cancelling tasks so the finally block in
+        # _listen() does not fire the on_disconnect callback.
+        self._shutting_down = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -154,15 +170,20 @@ class EnionWebSocket:
             f"&vsn={WS_VERSION}"
         )
         _LOGGER.debug("Connecting to Enion WebSocket: %s", url)
-        self._ws = await self._session.ws_connect(url)
+        self._ws = await asyncio.wait_for(
+            self._session.ws_connect(url),
+            timeout=_WS_CONNECT_TIMEOUT,
+        )
         self._connected = True
+        self._shutting_down = False
         await self._join_channel(f"web:user:{self._user_id}")
         await self._join_channel("web:global:0")
         self._task = asyncio.create_task(self._listen())
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def disconnect(self) -> None:
-        """Close the WebSocket gracefully."""
+        """Close the WebSocket gracefully without triggering a reconnect."""
+        self._shutting_down = True
         self._connected = False
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
@@ -222,7 +243,8 @@ class EnionWebSocket:
             _LOGGER.error("WebSocket listener error: %s", exc)
         finally:
             self._connected = False
-            if self._on_disconnect:
+            # Only trigger reconnect for unexpected disconnects, not intentional ones.
+            if not self._shutting_down and self._on_disconnect:
                 self._on_disconnect()
 
     async def _handle_text(self, raw: str) -> None:

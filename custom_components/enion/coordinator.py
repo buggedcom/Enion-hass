@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -28,8 +29,12 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Reconnect delay after WS drop
-_RECONNECT_DELAY = 30
+# Exponential backoff: delay = min(BASE * 2^attempt, MAX)
+_RECONNECT_DELAY_BASE = 30    # seconds
+_RECONNECT_DELAY_MAX = 600    # 10 minutes
+
+# WS JWT token lifetime is 15 minutes; re-login when older than this.
+_TOKEN_MAX_AGE = 840          # 14 minutes
 
 
 class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -56,6 +61,8 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._password = password
         self._ws: EnionWebSocket | None = None
         self._reconnect_task: asyncio.Task | None = None
+        self._reconnect_attempt = 0
+        self._last_login_at: float = 0.0
 
         # Static device metadata set once from /auth/me
         self.device_meta: dict[str, Any] = {}
@@ -75,10 +82,15 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_setup(self) -> None:
         """Login, fetch profile, seed data store, and connect the WebSocket."""
+        await self._login_and_seed()
+        await self._connect_ws()
+
+    async def _login_and_seed(self) -> None:
+        """Perform login + /auth/me and seed the data store."""
         await self._client.login(self._email, self._password)
+        self._last_login_at = time.monotonic()
         me = await self._client.fetch_me()
         self._seed_from_me(me)
-        await self._connect_ws()
 
     def _seed_from_me(self, me: dict[str, Any]) -> None:
         """Pre-populate the data store from the /auth/me response.
@@ -136,7 +148,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_shutdown(self) -> None:
         """Disconnect cleanly on HA stop."""
-        if self._reconnect_task:
+        if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
         if self._ws:
             await self._ws.disconnect()
@@ -166,21 +178,54 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             on_disconnect=self._on_ws_disconnect,
         )
         await self._ws.connect()
+        # Reset backoff on successful connection
+        self._reconnect_attempt = 0
 
     def _on_ws_disconnect(self) -> None:
-        _LOGGER.warning("Enion WebSocket disconnected; will reconnect in %ds", _RECONNECT_DELAY)
-        self._reconnect_task = self.hass.async_create_task(self._reconnect())
+        """Called by the WebSocket on unexpected disconnect.
 
-    async def _reconnect(self) -> None:
-        await asyncio.sleep(_RECONNECT_DELAY)
+        Ensures only one reconnect task is ever running at a time.
+        """
+        # Cancel any in-progress reconnect before scheduling a new one.
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+
+        delay = min(
+            _RECONNECT_DELAY_BASE * (2 ** self._reconnect_attempt),
+            _RECONNECT_DELAY_MAX,
+        )
+        _LOGGER.warning(
+            "Enion WebSocket disconnected; reconnect attempt %d in %ds",
+            self._reconnect_attempt + 1,
+            delay,
+        )
+        self._reconnect_task = self.hass.async_create_task(
+            self._reconnect(delay)
+        )
+
+    async def _reconnect(self, delay: float) -> None:
+        """Wait ``delay`` seconds then attempt to reconnect."""
         try:
-            # Re-authenticate in case the token expired
-            await self._client.login(self._email, self._password)
-            await self._client.fetch_me()
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+
+        self._reconnect_attempt += 1
+        try:
+            # Only re-login if the WS JWT token may have expired.
+            token_age = time.monotonic() - self._last_login_at
+            if token_age >= _TOKEN_MAX_AGE:
+                _LOGGER.debug("WS token age %.0fs >= %ds, re-logging in", token_age, _TOKEN_MAX_AGE)
+                await self._client.login(self._email, self._password)
+                self._last_login_at = time.monotonic()
+
             await self._connect_ws()
+            # _connect_ws resets _reconnect_attempt on success
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.error("Enion reconnect failed: %s", exc)
-            self._reconnect_task = self.hass.async_create_task(self._reconnect())
+            _LOGGER.error(
+                "Enion reconnect attempt %d failed: %s", self._reconnect_attempt, exc
+            )
+            self._on_ws_disconnect()  # schedule next attempt with increased backoff
 
     # ------------------------------------------------------------------
     # WebSocket event handlers
@@ -259,7 +304,6 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_current_price(self) -> float | None:
         """Return the electricity price for the current hour (ct/kWh)."""
-        import time
         now = int(time.time())
         for entry in self._store[DATA_PRICES]:
             ts = entry.get("ts", 0)
@@ -269,7 +313,6 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_next_price(self) -> float | None:
         """Return the electricity price for the next hour."""
-        import time
         now = int(time.time())
         for entry in self._store[DATA_PRICES]:
             ts = entry.get("ts", 0)
