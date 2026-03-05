@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Yhdistä Enioniin",
+        "description": "Syötä Enion-tilisi kirjautumistiedot.",
+        "data": {
+          "email": "Sähköpostiosoite",
+          "password": "Salasana"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Todenna Enion uudelleen",
+        "description": "Enion-tilisi kirjautumistiedot eivät ole enää voimassa. Syötä ne uudelleen.",
+        "data": {
+          "email": "Sähköpostiosoite",
+          "password": "Salasana"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Virheellinen sähköpostiosoite tai salasana.",
+      "cannot_connect": "Enion-palvelimeen ei saada yhteyttä.",
+      "unknown": "Odottamaton virhe tapahtui."
+    },
+    "abort": {
+      "already_configured": "Tämä Enion-tili on jo määritetty.",
+      "reauth_successful": "Uudelleentodennus onnistui."
+    }
+  }
+}

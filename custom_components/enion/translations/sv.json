@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut till Enion",
+        "description": "Ange dina inloggningsuppgifter för Enion.",
+        "data": {
+          "email": "E-postadress",
+          "password": "Lösenord"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Återautentisera med Enion",
+        "description": "Dina Enion-inloggningsuppgifter är inte längre giltiga. Ange dem igen.",
+        "data": {
+          "email": "E-postadress",
+          "password": "Lösenord"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ogiltig e-postadress eller lösenord.",
+      "cannot_connect": "Det går inte att ansluta till Enion-servern.",
+      "unknown": "Ett oväntat fel inträffade."
+    },
+    "abort": {
+      "already_configured": "Det här Enion-kontot är redan konfigurerat.",
+      "reauth_successful": "Återautentiseringen lyckades."
+    }
+  }
+}

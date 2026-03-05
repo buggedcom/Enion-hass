@@ -1,0 +1,12 @@
+{
+  "domain": "enion",
+  "name": "Enion",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/buggedcom/enion-hacs",
+  "issue_tracker": "https://github.com/buggedcom/enion-hacs/issues",
+  "requirements": ["aiohttp>=3.9.0"],
+  "dependencies": [],
+  "codeowners": ["@buggedcom"],
+  "iot_class": "cloud_push"
+}
