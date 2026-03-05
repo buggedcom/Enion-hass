@@ -33,7 +33,7 @@ class EnionBinarySensorDescription(BinarySensorEntityDescription):
 BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     # ------------------------------------------------------------------ Device online
     EnionBinarySensorDescription(
-        key="device_online",
+        key="enion_device_online",
         name="Device Online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         from_device=True,
@@ -41,7 +41,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     ),
     # ------------------------------------------------------------------ Relays (3/0 – 3/4)
     EnionBinarySensorDescription(
-        key="relay_0",
+        key="enion_relay_0",
         name="Relay 1",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
@@ -49,7 +49,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
         value_fn=lambda v: v.get("is_on"),
     ),
     EnionBinarySensorDescription(
-        key="relay_1",
+        key="enion_relay_1",
         name="Relay 2",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
@@ -57,7 +57,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
         value_fn=lambda v: v.get("is_on"),
     ),
     EnionBinarySensorDescription(
-        key="relay_2",
+        key="enion_relay_2",
         name="Relay 3",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
@@ -65,7 +65,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
         value_fn=lambda v: v.get("is_on"),
     ),
     EnionBinarySensorDescription(
-        key="relay_3",
+        key="enion_relay_3",
         name="Relay 4",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
@@ -73,7 +73,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
         value_fn=lambda v: v.get("is_on"),
     ),
     EnionBinarySensorDescription(
-        key="relay_4",
+        key="enion_relay_4",
         name="Relay 5",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,

@@ -38,6 +38,19 @@ from .const import (
 )
 from .coordinator import EnionCoordinator
 
+# Map raw API battery status strings to human-readable labels.
+_BATTERY_STATUS_MAP: dict[str, str] = {
+    "SPP_ENERGYSTORAGE_INFO_STATUS_OK": "OK",
+    "SPP_ENERGYSTORAGE_INFO_STATUS_COMM_FAILURE": "Communication Failure",
+}
+
+
+def _parse_battery_status(values: dict) -> str | None:
+    raw = values.get("status")
+    if raw is None:
+        return None
+    return _BATTERY_STATUS_MAP.get(raw, raw)
+
 
 @dataclass(frozen=True, kw_only=True)
 class EnionSensorDescription(SensorEntityDescription):
@@ -51,7 +64,7 @@ class EnionSensorDescription(SensorEntityDescription):
 SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Battery
     EnionSensorDescription(
-        key="battery_soc",
+        key="enion_battery_soc",
         name="Battery State of Charge",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
@@ -61,7 +74,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("soc"),
     ),
     EnionSensorDescription(
-        key="battery_power",
+        key="enion_battery_power",
         name="Battery Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
@@ -71,7 +84,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("power"),
     ),
     EnionSensorDescription(
-        key="battery_energy",
+        key="enion_battery_energy",
         name="Battery Energy",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
@@ -81,27 +94,67 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("energy"),
     ),
     EnionSensorDescription(
-        key="battery_voltage",
-        name="Battery Voltage",
+        key="enion_battery_voltage_l1",
+        name="Battery Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_BATTERY,
         port_sub="0",
-        value_fn=lambda v: v.get("phase_volt"),
+        value_fn=lambda v: (v.get("phase_volt") or [None])[0],
     ),
     EnionSensorDescription(
-        key="battery_current",
-        name="Battery Current",
+        key="enion_battery_voltage_l2",
+        name="Battery Voltage L2",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_BATTERY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phase_volt") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_battery_voltage_l3",
+        name="Battery Voltage L3",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_BATTERY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phase_volt") or [None, None, None])[2],
+    ),
+    EnionSensorDescription(
+        key="enion_battery_current_l1",
+        name="Battery Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_BATTERY,
         port_sub="0",
-        value_fn=lambda v: v.get("phase_curr"),
+        value_fn=lambda v: (v.get("phase_curr") or [None])[0],
     ),
     EnionSensorDescription(
-        key="battery_frequency",
+        key="enion_battery_current_l2",
+        name="Battery Current L2",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_BATTERY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phase_curr") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_battery_current_l3",
+        name="Battery Current L3",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_BATTERY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phase_curr") or [None, None, None])[2],
+    ),
+    EnionSensorDescription(
+        key="enion_battery_frequency",
         name="Battery Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
@@ -111,15 +164,15 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("freq"),
     ),
     EnionSensorDescription(
-        key="battery_status",
+        key="enion_battery_status",
         name="Battery Status",
         port_prefix=PORT_BATTERY,
         port_sub="0",
-        value_fn=lambda v: v.get("status"),
+        value_fn=_parse_battery_status,
     ),
     # ------------------------------------------------------------------ Grid (107/1 = power meter)
     EnionSensorDescription(
-        key="grid_power",
+        key="enion_grid_power",
         name="Grid Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
@@ -129,7 +182,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("power"),
     ),
     EnionSensorDescription(
-        key="grid_energy",
+        key="enion_grid_energy",
         name="Grid Energy (All Time)",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
@@ -139,7 +192,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("all_time_wh"),
     ),
     EnionSensorDescription(
-        key="grid_frequency",
+        key="enion_grid_frequency",
         name="Grid Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
@@ -149,7 +202,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("freq"),
     ),
     EnionSensorDescription(
-        key="grid_voltage_l1",
+        key="enion_grid_voltage_l1",
         name="Grid Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
@@ -159,7 +212,27 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("phase_volt") or [None])[0],
     ),
     EnionSensorDescription(
-        key="grid_current_l1",
+        key="enion_grid_voltage_l2",
+        name="Grid Voltage L2",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_GRID,
+        port_sub="1",
+        value_fn=lambda v: (v.get("phase_volt") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_grid_voltage_l3",
+        name="Grid Voltage L3",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_GRID,
+        port_sub="1",
+        value_fn=lambda v: (v.get("phase_volt") or [None, None, None])[2],
+    ),
+    EnionSensorDescription(
+        key="enion_grid_current_l1",
         name="Grid Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
@@ -168,9 +241,29 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         port_sub="1",
         value_fn=lambda v: (v.get("phase_curr") or [None])[0],
     ),
+    EnionSensorDescription(
+        key="enion_grid_current_l2",
+        name="Grid Current L2",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_GRID,
+        port_sub="1",
+        value_fn=lambda v: (v.get("phase_curr") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_grid_current_l3",
+        name="Grid Current L3",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_GRID,
+        port_sub="1",
+        value_fn=lambda v: (v.get("phase_curr") or [None, None, None])[2],
+    ),
     # ------------------------------------------------------------------ Energy meter (108/0)
     EnionSensorDescription(
-        key="energy_meter_power",
+        key="enion_energy_meter_power",
         name="Energy Meter Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
@@ -180,7 +273,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("power"),
     ),
     EnionSensorDescription(
-        key="energy_meter_energy",
+        key="enion_energy_meter_energy",
         name="Energy Meter Energy",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
@@ -190,28 +283,123 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: v.get("energy"),
     ),
     EnionSensorDescription(
-        key="energy_meter_voltage",
-        name="Energy Meter RMS Voltage",
+        key="enion_energy_meter_voltage_l1",
+        name="Energy Meter RMS Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_ENERGY,
         port_sub="0",
-        value_fn=lambda v: v.get("rms_voltage"),
+        value_fn=lambda v: (v.get("rms_voltage") or [None])[0],
     ),
     EnionSensorDescription(
-        key="energy_meter_current",
-        name="Energy Meter Current",
+        key="enion_energy_meter_voltage_l2",
+        name="Energy Meter RMS Voltage L2",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("rms_voltage") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_voltage_l3",
+        name="Energy Meter RMS Voltage L3",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("rms_voltage") or [None, None, None])[2],
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_current_l1",
+        name="Energy Meter Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_ENERGY,
         port_sub="0",
-        value_fn=lambda v: v.get("cur_current"),
+        value_fn=lambda v: (v.get("cur_current") or [None])[0],
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_current_l2",
+        name="Energy Meter Current L2",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("cur_current") or [None, None])[1],
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_current_l3",
+        name="Energy Meter Current L3",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("cur_current") or [None, None, None])[2],
+    ),
+    # ------------------------------------------------------------------ Energy meter power factor and real power
+    EnionSensorDescription(
+        key="enion_energy_meter_power_factor_l1",
+        name="Energy Meter Power Factor L1",
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}])[0].get("pf"),
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_power_factor_l2",
+        name="Energy Meter Power Factor L2",
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}, {}])[1].get("pf"),
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_power_factor_l3",
+        name="Energy Meter Power Factor L3",
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}, {}, {}])[2].get("pf"),
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_real_power_l1",
+        name="Energy Meter Real Power L1",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}])[0].get("real_power"),
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_real_power_l2",
+        name="Energy Meter Real Power L2",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}, {}])[1].get("real_power"),
+    ),
+    EnionSensorDescription(
+        key="enion_energy_meter_real_power_l3",
+        name="Energy Meter Real Power L3",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        port_prefix=PORT_ENERGY,
+        port_sub="0",
+        value_fn=lambda v: (v.get("phases") or [{}, {}, {}])[2].get("real_power"),
     ),
     # ------------------------------------------------------------------ Electricity prices
     EnionSensorDescription(
-        key="electricity_price_current",
+        key="enion_electricity_price_current",
         name="Electricity Price (Current Hour)",
         native_unit_of_measurement="ct/kWh",
         device_class=SensorDeviceClass.MONETARY,
@@ -222,7 +410,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: None,
     ),
     EnionSensorDescription(
-        key="electricity_price_next",
+        key="enion_electricity_price_next",
         name="Electricity Price (Next Hour)",
         native_unit_of_measurement="ct/kWh",
         device_class=SensorDeviceClass.MONETARY,
@@ -233,7 +421,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     # ------------------------------------------------------------------ Weather
     EnionSensorDescription(
-        key="weather_temperature",
+        key="enion_weather_temperature",
         name="Outside Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -244,13 +432,38 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: None,
     ),
     EnionSensorDescription(
-        key="weather_wind_speed",
+        key="enion_weather_wind_speed",
         name="Wind Speed",
         native_unit_of_measurement="m/s",
         device_class=SensorDeviceClass.WIND_SPEED,
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_WEATHER,
         port_sub="0",
+        value_fn=lambda v: None,
+    ),
+    EnionSensorDescription(
+        key="enion_weather_wind_direction",
+        name="Wind Direction",
+        port_prefix=PORT_WEATHER,
+        port_sub="0",
+        # Handled specially in EnionWeatherSensor
+        value_fn=lambda v: None,
+    ),
+    EnionSensorDescription(
+        key="enion_weather_sun_condition",
+        name="Sun Condition",
+        port_prefix=PORT_WEATHER,
+        port_sub="0",
+        # Handled specially in EnionWeatherSensor
+        value_fn=lambda v: None,
+    ),
+    # ------------------------------------------------------------------ Battery Optimizer (220/0)
+    EnionSensorDescription(
+        key="enion_battery_optimizer_state",
+        name="Battery Optimizer State",
+        port_prefix=PORT_OPTIMIZER,
+        port_sub="0",
+        # Handled specially in EnionOptimizerSensor
         value_fn=lambda v: None,
     ),
 )
@@ -265,14 +478,20 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
 
     for desc in SENSOR_DESCRIPTIONS:
-        if desc.key == "electricity_price_current":
+        if desc.key == "enion_electricity_price_current":
             entities.append(EnionPriceSensor(coordinator, entry, desc, current=True))
-        elif desc.key == "electricity_price_next":
+        elif desc.key == "enion_electricity_price_next":
             entities.append(EnionPriceSensor(coordinator, entry, desc, current=False))
-        elif desc.key == "weather_temperature":
+        elif desc.key == "enion_weather_temperature":
             entities.append(EnionWeatherSensor(coordinator, entry, desc, field="temperature"))
-        elif desc.key == "weather_wind_speed":
+        elif desc.key == "enion_weather_wind_speed":
             entities.append(EnionWeatherSensor(coordinator, entry, desc, field="wind_speed"))
+        elif desc.key == "enion_weather_wind_direction":
+            entities.append(EnionWeatherSensor(coordinator, entry, desc, field="wind_dir"))
+        elif desc.key == "enion_weather_sun_condition":
+            entities.append(EnionWeatherSensor(coordinator, entry, desc, field="sun"))
+        elif desc.key == "enion_battery_optimizer_state":
+            entities.append(EnionOptimizerSensor(coordinator, entry, desc))
         else:
             entities.append(EnionPortSensor(coordinator, entry, desc))
 
@@ -374,3 +593,44 @@ class EnionWeatherSensor(CoordinatorEntity[EnionCoordinator], SensorEntity):
             if ts <= now < ts + 3600:
                 return entry.get(self._field)
         return None
+
+
+class EnionOptimizerSensor(CoordinatorEntity[EnionCoordinator], SensorEntity):
+    """Battery optimizer state sensor with full schedule in attributes."""
+
+    entity_description: EnionSensorDescription
+
+    def __init__(
+        self,
+        coordinator: EnionCoordinator,
+        entry: ConfigEntry,
+        description: EnionSensorDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = _make_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current optimizer state."""
+        current_state, _, _ = self.coordinator.get_optimizer_state()
+        return current_state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the optimizer schedule and next state in attributes."""
+        _, next_event_time, schedule = self.coordinator.get_optimizer_state()
+
+        # Format schedule for display
+        formatted_schedule = []
+        for event in schedule:
+            formatted_schedule.append({
+                "time": event["time"],
+                "state": event["state"],
+            })
+
+        return {
+            "next_event_time": next_event_time,
+            "schedule": formatted_schedule,
+        }

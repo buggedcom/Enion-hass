@@ -58,6 +58,19 @@ More sensors could be added if so configured in Enion, but they will need to be 
 | Device Online | Whether the Enion hub is connected to the cloud |
 | Relay 1–5 | On/off state of each relay output |
 
+### Calendar
+
+| Entity | Description |
+|---|---|
+| Battery Optimizer Schedule | Upcoming battery optimiser events as a HA calendar |
+| Weather Forecast | Hourly weather forecast as a HA calendar |
+
+**Battery Optimizer Schedule** exposes the future charge/discharge schedule that the Enion cloud optimiser plans for your battery. Each event represents a scheduled optimiser state (e.g. `CHARGE`, `NET_ZERO`, `AVOID_SELL`) and spans from its scheduled start time until the next event begins (or one hour if it is the last event in the schedule).
+
+**Weather Forecast** exposes the hourly weather forecast as calendar events. Each one-hour event includes the temperature and wind speed in the event title, with full details (wind direction, sun percentage) in the event description. When the Enion cloud pushes an updated forecast for a time slot that has already been received, the calendar automatically reflects the latest values — there are no duplicate events.
+
+Both calendars are updated in real time via the WebSocket — no manual refresh is needed. You can display them in Home Assistant dashboards using the built-in **Calendar** card, or use them in automations to act ahead of a scheduled charging window or an incoming weather change.
+
 ---
 
 ## Requirements

@@ -36,10 +36,13 @@ async def _validate_credentials(
     hass, email: str, password: str
 ) -> dict[str, Any]:
     """Attempt login and return the /auth/me payload, or raise on failure."""
+    _LOGGER.debug("Starting credential validation for email: %s", email)
     session = async_get_clientsession(hass)
     client = EnionClient(session)
     await client.login(email, password)
-    return await client.fetch_me()
+    me = await client.fetch_me()
+    _LOGGER.debug("Credential validation successful for email: %s", email)
+    return me
 
 
 class EnionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -56,14 +59,17 @@ class EnionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             email = user_input[CONF_EMAIL]
             password = user_input[CONF_PASSWORD]
 
+            _LOGGER.debug("User submitted login attempt for email: %s", email)
             try:
                 me = await _validate_credentials(self.hass, email, password)
-            except EnionAuthError:
+            except EnionAuthError as exc:
+                _LOGGER.warning("Authentication failed for email %s: %s", email, exc)
                 errors["base"] = "invalid_auth"
-            except (EnionApiError, aiohttp.ClientError):
+            except (EnionApiError, aiohttp.ClientError) as exc:
+                _LOGGER.warning("Connection error during login for email %s: %s", email, exc)
                 errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during Enion login")
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during Enion login for email %s", email)
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(email.lower())
@@ -71,6 +77,7 @@ class EnionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 user = me.get("user") or {}
                 title = user.get("email") or email
+                _LOGGER.info("Successfully configured Enion for user: %s", title)
                 return self.async_create_entry(
                     title=title,
                     data={CONF_EMAIL: email, CONF_PASSWORD: password},

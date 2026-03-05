@@ -20,11 +20,13 @@ from custom_components.enion.coordinator import (
     _RECONNECT_DELAY_BASE,
     _RECONNECT_DELAY_MAX,
     _TOKEN_MAX_AGE,
+    _parse_iso8601_to_unix,
 )
 from tests.conftest import (
     ME_RESPONSE,
     WS_DEVICE_EVENT,
     WS_UPDATE_BATTERY,
+    WS_UPDATE_OPTIMIZER,
     WS_UPDATE_PRICES,
     WS_UPDATE_WEATHER,
 )
@@ -136,9 +138,10 @@ class TestHandleUpdate:
 
         prices = coordinator._store[DATA_PRICES]
         assert len(prices) == 4
-        assert prices[0]["price"] == 10.5
-        assert prices[0]["ts"] == 1_700_000_000
-        assert prices[1]["ts"] == 1_700_000_000 + 3600
+        assert prices[0]["price"] == 105
+        # "2023-11-15T00:13:20Z" == Unix 1700007200
+        assert prices[0]["ts"] == 1_700_007_200
+        assert prices[1]["ts"] == 1_700_007_200 + 3600
 
     async def test_expands_weather_into_data_weather(self, coordinator):
         coordinator._seed_from_me(ME_RESPONSE)
@@ -147,7 +150,8 @@ class TestHandleUpdate:
         weather = coordinator._store[DATA_WEATHER]
         assert len(weather) == 2
         assert weather[0]["temperature"] == 3.5
-        assert weather[0]["ts"] == 1_700_000_000
+        # "2023-11-15T00:13:20Z" == Unix 1700007200
+        assert weather[0]["ts"] == 1_700_007_200
 
     async def test_empty_values_are_ignored(self, coordinator):
         coordinator._seed_from_me(ME_RESPONSE)
@@ -242,14 +246,16 @@ class TestPricing:
 
     async def test_get_current_price(self, coordinator):
         # Set a price window that contains "now"
+        # API returns price in tenths of cents, test uses 125 (12.5 ct/kWh)
         now = int(time.time())
-        self._set_prices(coordinator, now - 1800, [12.5, 14.0])
+        self._set_prices(coordinator, now - 1800, [125, 140])
 
         assert coordinator.get_current_price() == 12.5
 
     async def test_get_next_price(self, coordinator):
+        # API returns price in tenths of cents, test uses 125 and 140
         now = int(time.time())
-        self._set_prices(coordinator, now - 1800, [12.5, 14.0])
+        self._set_prices(coordinator, now - 1800, [125, 140])
 
         assert coordinator.get_next_price() == 14.0
 
@@ -259,7 +265,7 @@ class TestPricing:
 
     async def test_returns_none_when_all_prices_expired(self, coordinator):
         old_ts = int(time.time()) - 7200
-        self._set_prices(coordinator, old_ts, [10.0])
+        self._set_prices(coordinator, old_ts, [100])
 
         assert coordinator.get_current_price() is None
 
@@ -410,3 +416,258 @@ class TestShutdown:
         await coordinator.async_shutdown()
 
         done_task.cancel.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _parse_iso8601_to_unix (module-level helper)
+# ---------------------------------------------------------------------------
+
+
+class TestParseIso8601:
+    def test_converts_iso_string_to_unix(self):
+        # "2023-11-15T00:13:20Z" is the canonical fixture timestamp
+        assert _parse_iso8601_to_unix("2023-11-15T00:13:20Z") == 1_700_007_200
+
+    def test_passes_through_integer_unchanged(self):
+        assert _parse_iso8601_to_unix(1_700_007_200) == 1_700_007_200
+
+    def test_passes_through_float_as_int(self):
+        # Real API might send numeric timestamps as floats
+        assert _parse_iso8601_to_unix(1_700_007_200.9) == 1_700_007_200
+
+    def test_returns_none_for_none_input(self):
+        assert _parse_iso8601_to_unix(None) is None
+
+    def test_returns_none_and_logs_warning_for_malformed_string(self):
+        with patch("custom_components.enion.coordinator._LOGGER") as mock_log:
+            result = _parse_iso8601_to_unix("not-a-valid-date")
+            assert result is None
+            mock_log.warning.assert_called_once()
+
+    def test_handles_timestamp_without_z_suffix(self):
+        # Timezone-naive ISO string should still be treated as UTC
+        assert _parse_iso8601_to_unix("2023-11-15T00:13:20") == 1_700_007_200
+
+    def test_converts_explicit_utc_offset(self):
+        # "+00:00" suffix — should give the same result as "Z"
+        assert _parse_iso8601_to_unix("2023-11-15T00:13:20+00:00") == 1_700_007_200
+
+    def test_converts_non_utc_offset_correctly(self):
+        # "+02:00" means the UTC time is 2 hours EARLIER than the local time.
+        # "2023-11-15T02:13:20+02:00" == "2023-11-15T00:13:20Z" == 1_700_007_200
+        assert _parse_iso8601_to_unix("2023-11-15T02:13:20+02:00") == 1_700_007_200
+
+    def test_negative_offset_converted_correctly(self):
+        # "2023-11-14T22:13:20-02:00" == "2023-11-15T00:13:20Z" == 1_700_007_200
+        assert _parse_iso8601_to_unix("2023-11-14T22:13:20-02:00") == 1_700_007_200
+
+
+# ---------------------------------------------------------------------------
+# _handle_update — optimizer branch
+# ---------------------------------------------------------------------------
+
+
+class TestHandleUpdateOptimizer:
+    async def test_updates_optimizer_store(self, coordinator):
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator._handle_update(WS_UPDATE_OPTIMIZER)
+
+        optimizer = coordinator._store[DATA_OPTIMIZER]
+        assert "events" in optimizer
+        assert len(optimizer["events"]) == 3
+
+    async def test_notifies_listeners_on_optimizer_update(self, coordinator):
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator.async_set_updated_data.reset_mock()
+        coordinator._handle_update(WS_UPDATE_OPTIMIZER)
+        coordinator.async_set_updated_data.assert_called_once()
+
+    async def test_handle_update_with_integer_base_ts(self, coordinator):
+        """Prices update whose base_ts is already an integer (int passthrough path)."""
+        coordinator._seed_from_me(ME_RESPONSE)
+        base_ts = 1_700_007_200
+        coordinator._handle_update({
+            **WS_UPDATE_PRICES,
+            "values": {
+                "base_ts": base_ts,   # integer, not ISO string
+                "timestep": 3600,
+                "prices": [100, 200],
+            },
+        })
+        prices = coordinator._store[DATA_PRICES]
+        assert len(prices) == 2
+        assert prices[0]["ts"] == base_ts
+        assert prices[1]["ts"] == base_ts + 3600
+
+
+# ---------------------------------------------------------------------------
+# get_optimizer_state
+# ---------------------------------------------------------------------------
+
+
+class TestOptimizerState:
+    # Fixed reference timestamps so tests are fully deterministic.
+    #   "2023-11-15T00:00:00Z" = 1_700_006_400
+    #   "2023-11-15T01:00:00Z" = 1_700_010_000
+    #   "2023-11-15T02:00:00Z" = 1_700_013_600
+    #   _NOW = 1_700_011_000  (~01:10 UTC — between PAST2 and FUTURE)
+    _PAST1  = "2023-11-15T00:00:00Z"
+    _PAST2  = "2023-11-15T01:00:00Z"
+    _FUTURE = "2023-11-15T02:00:00Z"
+    _NOW    = 1_700_011_000
+
+    def _make_event(self, ts_str: str, state: str) -> list:
+        return [ts_str, {
+            "state": f"BATTERY_OPTIMIZER_STATE_{state}",
+            "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN",
+            "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN",
+        }]
+
+    def _set_events(self, coordinator, events: list) -> None:
+        coordinator._store[DATA_OPTIMIZER] = {"events": events}
+
+    async def test_returns_none_tuple_when_no_events(self, coordinator):
+        current, next_time, schedule = coordinator.get_optimizer_state()
+        assert current is None
+        assert next_time is None
+        assert schedule == []
+
+    async def test_strips_battery_optimizer_state_prefix(self, coordinator):
+        self._set_events(coordinator, [self._make_event(self._PAST1, "NET_ZERO")])
+        with patch("time.time", return_value=self._NOW):
+            current, _, schedule = coordinator.get_optimizer_state()
+        assert current == "NET_ZERO"
+        assert schedule[0]["state"] == "NET_ZERO"
+
+    async def test_current_state_is_latest_past_event(self, coordinator):
+        self._set_events(coordinator, [
+            self._make_event(self._PAST1, "NET_ZERO"),
+            self._make_event(self._PAST2, "AVOID_SELL"),
+            self._make_event(self._FUTURE, "CHARGE"),
+        ])
+        with patch("time.time", return_value=self._NOW):
+            current, next_time, schedule = coordinator.get_optimizer_state()
+        assert current == "AVOID_SELL"
+        assert next_time == self._FUTURE
+        assert len(schedule) == 3
+
+    async def test_next_event_is_first_future_event(self, coordinator):
+        self._set_events(coordinator, [
+            self._make_event(self._PAST1, "NET_ZERO"),
+            self._make_event(self._FUTURE, "CHARGE"),
+        ])
+        with patch("time.time", return_value=self._NOW):
+            _, next_time, _ = coordinator.get_optimizer_state()
+        assert next_time == self._FUTURE
+
+    async def test_all_events_in_past_has_no_next_event(self, coordinator):
+        self._set_events(coordinator, [
+            self._make_event(self._PAST1, "NET_ZERO"),
+            self._make_event(self._PAST2, "AVOID_SELL"),
+        ])
+        with patch("time.time", return_value=self._NOW):
+            current, next_time, schedule = coordinator.get_optimizer_state()
+        assert current == "AVOID_SELL"
+        assert next_time is None
+
+    async def test_all_events_in_future_has_no_current_state(self, coordinator):
+        self._set_events(coordinator, [self._make_event(self._FUTURE, "CHARGE")])
+        with patch("time.time", return_value=self._NOW):
+            current, next_time, _ = coordinator.get_optimizer_state()
+        assert current is None
+        assert next_time == self._FUTURE
+
+    async def test_malformed_timestamp_event_is_skipped(self, coordinator):
+        self._set_events(coordinator, [
+            ["not-a-date", {
+                "state": "BATTERY_OPTIMIZER_STATE_CHARGE",
+                "reserve_up": "X", "reserve_dn": "Y",
+            }],
+            self._make_event(self._PAST1, "NET_ZERO"),
+        ])
+        with patch("time.time", return_value=self._NOW):
+            current, _, schedule = coordinator.get_optimizer_state()
+        assert len(schedule) == 1
+        assert current == "NET_ZERO"
+
+    async def test_schedule_contains_reserve_fields(self, coordinator):
+        self._set_events(coordinator, [self._make_event(self._PAST1, "NET_ZERO")])
+        with patch("time.time", return_value=self._NOW):
+            _, _, schedule = coordinator.get_optimizer_state()
+        assert schedule[0]["reserve_up"] == "BATOPT_EVENT_RESERVE_UNKNOWN"
+        assert schedule[0]["reserve_dn"] == "BATOPT_EVENT_RESERVE_UNKNOWN"
+
+
+# ---------------------------------------------------------------------------
+# Pricing edge cases — price=None entries in the store
+# ---------------------------------------------------------------------------
+
+
+class TestPricingNoneValues:
+    def _set_prices(self, coordinator, base_ts: int, prices: list) -> None:
+        coordinator._store[DATA_PRICES] = [
+            {"ts": base_ts + i * 3600, "price": p}
+            for i, p in enumerate(prices)
+        ]
+
+    async def test_get_current_price_returns_none_when_price_entry_is_none(self, coordinator):
+        now = int(time.time())
+        self._set_prices(coordinator, now - 1800, [None])
+        assert coordinator.get_current_price() is None
+
+    async def test_get_next_price_returns_none_when_price_entry_is_none(self, coordinator):
+        now = int(time.time())
+        self._set_prices(coordinator, now - 1800, [125, None])
+        assert coordinator.get_next_price() is None
+
+
+# ---------------------------------------------------------------------------
+# _notify_listeners — listener exception isolation
+# ---------------------------------------------------------------------------
+
+
+class TestNotifyListeners:
+    """Verify that exceptions raised inside entity listener callbacks are
+    absorbed by _notify_listeners() and never propagate back into the
+    WebSocket message handler (which would incorrectly attribute the error
+    to a parse failure and suppress the real cause).
+
+    The real-world trigger for these tests is a third-party HA integration
+    calling the old ``CalendarEvent(title=…)`` API that was renamed to
+    ``summary=`` in HA 2023.3, which raises:
+      TypeError: CalendarEvent.__init__() got an unexpected keyword argument 'title'
+    """
+
+    async def test_listener_exception_does_not_propagate(self, coordinator):
+        coordinator.async_set_updated_data = MagicMock(
+            side_effect=TypeError(
+                "CalendarEvent.__init__() got an unexpected keyword argument 'title'"
+            )
+        )
+        # Must not raise — the exception is absorbed
+        coordinator._notify_listeners()
+
+    async def test_listener_exception_is_logged_at_exception_level(self, coordinator):
+        coordinator.async_set_updated_data = MagicMock(
+            side_effect=RuntimeError("boom from listener")
+        )
+        with patch("custom_components.enion.coordinator._LOGGER") as mock_log:
+            coordinator._notify_listeners()
+        mock_log.exception.assert_called_once()
+
+    async def test_handle_update_absorbs_listener_type_error(self, coordinator):
+        """TypeError from a listener must not escape _handle_update."""
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator.async_set_updated_data = MagicMock(
+            side_effect=TypeError("CalendarEvent bad kwarg")
+        )
+        # Must not raise
+        coordinator._handle_update(WS_UPDATE_BATTERY)
+
+    async def test_handle_device_absorbs_listener_type_error(self, coordinator):
+        """TypeError from a listener must not escape _handle_device."""
+        coordinator.async_set_updated_data = MagicMock(
+            side_effect=TypeError("CalendarEvent bad kwarg")
+        )
+        # Must not raise
+        coordinator._handle_device(WS_DEVICE_EVENT)

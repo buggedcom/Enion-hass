@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import logging
 import time
 from typing import Any
@@ -35,6 +36,41 @@ _RECONNECT_DELAY_MAX = 600    # 10 minutes
 
 # WS JWT token lifetime is 15 minutes; re-login when older than this.
 _TOKEN_MAX_AGE = 840          # 14 minutes
+
+
+def _parse_iso8601_to_unix(iso_str: str | int | float | None) -> int | None:
+    """Convert ISO 8601 timestamp string to Unix timestamp.
+
+    Handles string, int, and float inputs.  Returns None for None or
+    unparseable input.
+
+    Correctly converts timezone-aware strings (e.g. ``+02:00``) to UTC
+    rather than merely replacing the tzinfo attribute, which would silently
+    produce a wrong timestamp and, in some Python builds, raise
+    ``TypeError: can't compare offset-naive and offset-aware datetimes``
+    when the resulting datetime is subtracted from the UTC epoch internally.
+    """
+    if iso_str is None:
+        return None
+    if isinstance(iso_str, (int, float)):
+        return int(iso_str)
+    try:
+        # Replace the 'Z' suffix with '+00:00' so fromisoformat always receives
+        # an explicit UTC offset, avoiding a naive datetime that can later cause
+        # "can't compare offset-naive and offset-aware datetimes" errors.
+        normalized = iso_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            # No offset in the string at all — assume UTC.
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            # Offset present — convert to UTC, adjusting the time values
+            # correctly.  astimezone() does this; replace() would not.
+            dt = dt.astimezone(timezone.utc)
+        return int(dt.timestamp())
+    except (ValueError, AttributeError, TypeError, OverflowError) as e:
+        _LOGGER.warning("Failed to parse timestamp '%s': %s", iso_str, e)
+        return None
 
 
 class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -130,6 +166,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             port_id = port.get("id")
             port_number = port.get("port_number", "")
             if port_id is not None:
+                _LOGGER.debug("Seeding port: port_id=%s, port_number=%s, values=%s", port_id, port_number, port.get("values", {}))
                 self._store[DATA_PORTS].setdefault(port_id, {}).update(
                     {
                         "port_number": port_number,
@@ -231,6 +268,23 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # WebSocket event handlers
     # ------------------------------------------------------------------
 
+    def _notify_listeners(self) -> None:
+        """Push the current store snapshot to all entity listeners.
+
+        Wraps ``async_set_updated_data`` in a try/except so that an exception
+        raised by any listener callback — e.g. a third-party HA integration
+        calling the old ``CalendarEvent(title=…)`` API that was renamed to
+        ``summary=`` — cannot propagate back into our WebSocket message handler
+        and be silently misattributed as a parse failure.
+        """
+        try:
+            self.async_set_updated_data(dict(self._store))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception(
+                "Exception in an entity listener after coordinator update; "
+                "this is likely a bug in another installed integration"
+            )
+
     def _handle_device(self, payload: dict[str, Any]) -> None:
         """Handle a ``device`` event (device online status)."""
         values = payload.get("values", {})
@@ -242,7 +296,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "hw_id": payload.get("hw_id"),
             }
         )
-        self.async_set_updated_data(dict(self._store))
+        self._notify_listeners()
 
     def _handle_update(self, payload: dict[str, Any]) -> None:
         """Handle an ``update`` event (port value change)."""
@@ -255,6 +309,8 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         port_prefix = port_number.split("/")[0]
 
+        _LOGGER.debug("Port update: port_id=%s, port_number=%s, values=%s", port_id, port_number, values)
+
         # Merge into port store
         port_data = self._store[DATA_PORTS].setdefault(port_id, {})
         port_data["port_number"] = port_number
@@ -263,7 +319,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Also propagate to well-known top-level stores for convenience
         if port_prefix == PORT_PRICES:
             prices_raw = values.get("prices", [])
-            base_ts = values.get("base_ts")
+            base_ts = _parse_iso8601_to_unix(values.get("base_ts"))
             timestep = values.get("timestep", 3600)
             if prices_raw and base_ts is not None:
                 self._store[DATA_PRICES] = [
@@ -272,7 +328,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ]
         elif port_prefix == PORT_WEATHER:
             weathers = values.get("weathers", [])
-            base_ts = values.get("base_ts")
+            base_ts = _parse_iso8601_to_unix(values.get("base_ts"))
             timestep = values.get("timestep", 3600)
             if weathers and base_ts is not None:
                 self._store[DATA_WEATHER] = [
@@ -282,7 +338,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif port_prefix == PORT_OPTIMIZER:
             self._store[DATA_OPTIMIZER].update(values)
 
-        self.async_set_updated_data(dict(self._store))
+        self._notify_listeners()
 
     # ------------------------------------------------------------------
     # Convenience accessors used by entities
@@ -308,7 +364,9 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for entry in self._store[DATA_PRICES]:
             ts = entry.get("ts", 0)
             if ts <= now < ts + 3600:
-                return entry.get("price")
+                price = entry.get("price")
+                # API returns price in tenths of cents, divide by 10 for ct/kWh
+                return price / 10 if price is not None else None
         return None
 
     def get_next_price(self) -> float | None:
@@ -317,5 +375,60 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for entry in self._store[DATA_PRICES]:
             ts = entry.get("ts", 0)
             if ts > now:
-                return entry.get("price")
+                price = entry.get("price")
+                # API returns price in tenths of cents, divide by 10 for ct/kWh
+                return price / 10 if price is not None else None
         return None
+
+    # ------------------------------------------------------------------
+    # Battery Optimizer (220/0)
+    # ------------------------------------------------------------------
+
+    def get_optimizer_state(self) -> tuple[str | None, str | None, list[dict[str, Any]]]:
+        """Get battery optimizer current state, next state/time, and full schedule.
+
+        Returns:
+            Tuple of (current_state, next_event_time, full_schedule)
+            - current_state: e.g., "NET_ZERO", "CHARGE", "AVOID_SELL"
+            - next_event_time: ISO 8601 string or None if no future events
+            - full_schedule: List of dicts with 'time' and 'state' keys
+        """
+        optimizer_data = self._store.get(DATA_OPTIMIZER, {})
+        events = optimizer_data.get("events", [])
+
+        if not events:
+            return None, None, []
+
+        # Parse events: each is [timestamp_str, {state, reserve_up, reserve_dn}]
+        now = int(time.time())
+        current_state = None
+        next_event_time = None
+        schedule = []
+
+        for event_time_str, event_data in events:
+            try:
+                event_ts = _parse_iso8601_to_unix(event_time_str)
+                if event_ts is None:
+                    continue
+
+                state = event_data.get("state", "").replace("BATTERY_OPTIMIZER_STATE_", "")
+
+                schedule.append({
+                    "time": event_time_str,
+                    "timestamp": event_ts,
+                    "state": state,
+                    "reserve_up": event_data.get("reserve_up"),
+                    "reserve_dn": event_data.get("reserve_dn"),
+                })
+
+                # Current state: event time <= now < next event time
+                if event_ts <= now:
+                    current_state = state
+                # Next event: first event in future
+                elif next_event_time is None:
+                    next_event_time = event_time_str
+
+            except (ValueError, KeyError, TypeError):
+                continue
+
+        return current_state, next_event_time, schedule

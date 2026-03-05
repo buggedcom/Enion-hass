@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+import time
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
@@ -92,9 +93,9 @@ WS_UPDATE_PRICES = {
     "refresh": True,
     "version": "0.162.236",
     "values": {
-        "base_ts": 1_700_000_000,
+        "base_ts": "2023-11-15T00:13:20Z",
         "timestep": 3600,
-        "prices": [10.5, 11.0, 9.8, 8.5],
+        "prices": [105, 110, 98, 85],
     },
 }
 
@@ -107,7 +108,7 @@ WS_UPDATE_WEATHER = {
     "refresh": True,
     "version": "0.162.236",
     "values": {
-        "base_ts": 1_700_000_000,
+        "base_ts": "2023-11-15T00:13:20Z",
         "timestep": 3600,
         "weathers": [
             {"temperature": 3.5, "wind_speed": 4.2, "wind_dir": 180, "sun": 0},
@@ -125,5 +126,24 @@ WS_DEVICE_EVENT = {
         "online": True,
         "last_data": "2026-03-05T13:00:00Z",
         "firmware_version": "DDBB83BE33D7B2BC",
+    },
+}
+
+WS_UPDATE_OPTIMIZER = {
+    "device_id": 2392,
+    "event": "update",
+    "hw_id": "0B8D7EFB",
+    "port_id": 104267,
+    "port_number": "220/0",
+    "refresh": True,
+    "version": "0.162.236",
+    "values": {
+        "commissioning_state": 0,
+        "commissioning_errcode": 0,
+        "events": [
+            ["2026-03-05T17:00:00Z", {"state": "BATTERY_OPTIMIZER_STATE_NET_ZERO", "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN", "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN"}],
+            ["2026-03-05T20:00:00Z", {"state": "BATTERY_OPTIMIZER_STATE_AVOID_SELL", "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN", "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN"}],
+            ["2026-03-05T22:00:00Z", {"state": "BATTERY_OPTIMIZER_STATE_CHARGE", "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN", "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN"}],
+        ],
     },
 }

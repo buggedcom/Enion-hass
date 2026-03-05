@@ -380,3 +380,75 @@ class TestEnionWebSocketMessages:
 
         on_update.assert_not_called()
         on_device.assert_not_called()
+
+    async def test_callback_exception_does_not_kill_listener(self):
+        """A TypeError in on_update must not kill the WebSocket session.
+
+        This is the real-world failure mode where a bad server payload causes
+        a datetime/type error in the coordinator callback.  The listener must
+        survive and process the next message.
+        """
+        good_payload = {"port_id": 1, "port_number": "22/0", "values": {"soc": 80}}
+        bad_msg = self._phoenix_msg("update", {"bad": "data"})
+        good_msg = self._phoenix_msg("update", good_payload)
+
+        mock_ws = MagicMock()
+        mock_ws.closed = False
+        mock_ws.send_str = AsyncMock()
+        mock_ws.close = AsyncMock()
+        mock_ws.__aiter__ = lambda self: _ws_iter(bad_msg, good_msg)
+
+        call_count = 0
+
+        def flaky_on_update(payload):
+            nonlocal call_count
+            call_count += 1
+            if payload == {"bad": "data"}:
+                raise TypeError("can't compare offset-naive and offset-aware datetimes")
+
+        async def fake_wait_for(coro, timeout=None):
+            return mock_ws
+
+        with patch("custom_components.enion.api.asyncio.wait_for", side_effect=fake_wait_for):
+            ws_client = EnionWebSocket(
+                session=MagicMock(),
+                ws_token="tok",
+                user_id="2628",
+                on_update=flaky_on_update,
+                on_device=MagicMock(),
+            )
+            await ws_client.connect()
+            await asyncio.sleep(0.05)
+
+        # Both messages must have been attempted — if the listener had died on the
+        # first error, call_count would be 1.
+        assert call_count == 2
+
+    async def test_connect_does_not_log_full_token(self):
+        """The WebSocket connect log must not expose the full JWT token."""
+        mock_ws = MagicMock()
+        mock_ws.closed = False
+        mock_ws.send_str = AsyncMock()
+        mock_ws.close = AsyncMock()
+        mock_ws.__aiter__ = lambda self: _ws_iter()
+
+        async def fake_wait_for(coro, timeout=None):
+            return mock_ws
+
+        full_token = "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.secret_payload.signature"
+
+        with patch("custom_components.enion.api.asyncio.wait_for", side_effect=fake_wait_for):
+            with patch("custom_components.enion.api._LOGGER") as mock_logger:
+                ws_client = EnionWebSocket(
+                    session=MagicMock(),
+                    ws_token=full_token,
+                    user_id="2628",
+                    on_update=MagicMock(),
+                    on_device=MagicMock(),
+                )
+                await ws_client.connect()
+
+        # The full token must never appear in any log call argument
+        for call_args in mock_logger.debug.call_args_list:
+            logged = " ".join(str(a) for a in call_args[0])
+            assert full_token not in logged, "Full JWT token was logged in plaintext"

@@ -64,16 +64,25 @@ class EnionClient:
         Returns the parsed JSON body which contains the WS token.
         """
         payload = {"email": email, "password": password, "language": "en"}
+        _LOGGER.debug("Attempting login to %s with email: %s", API_LOGIN, email)
         async with self._session.post(
-            API_LOGIN, 
-            json=payload, 
+            API_LOGIN,
+            json=payload,
             timeout=_HTTP_TIMEOUT
         ) as resp:
+            _LOGGER.debug("Login response status: %d", resp.status)
             if resp.status == 401:
+                _LOGGER.warning("Login failed: Invalid credentials for email %s", email)
                 raise EnionAuthError("Invalid credentials")
             if resp.status != 200:
+                try:
+                    error_body = await resp.text()
+                    _LOGGER.error("Login failed with HTTP %d: %s", resp.status, error_body)
+                except Exception:
+                    _LOGGER.error("Login failed with HTTP %d", resp.status)
                 raise EnionApiError(f"Login failed with HTTP {resp.status}")
             data = await resp.json()
+            _LOGGER.debug("Login successful, token received: %s", bool(data.get("token")))
             # The login response contains a token used for the WebSocket
             self._ws_token = data.get("token")
             return data
@@ -85,15 +94,31 @@ class EnionClient:
           { "user": {"id": 2628, ...}, "token": <str|null>,
             "devices": [...], "locations": [{"id": 1938, ...}], ... }
         """
+        _LOGGER.debug("Fetching /auth/me")
+
+        # Use the token from login as a Bearer header
+        headers = {}
+        if self._ws_token:
+            headers["Authorization"] = f"Bearer {self._ws_token}"
+
         async with self._session.get(
-            API_ME, 
-            timeout=_HTTP_TIMEOUT
+            API_ME,
+            timeout=_HTTP_TIMEOUT,
+            headers=headers
         ) as resp:
+            _LOGGER.debug("/auth/me response status: %d", resp.status)
             if resp.status == 401:
+                _LOGGER.warning("Session expired or invalid")
                 raise EnionAuthError("Session expired")
             if resp.status != 200:
+                try:
+                    error_body = await resp.text()
+                    _LOGGER.error("/auth/me failed with HTTP %d: %s", resp.status, error_body)
+                except Exception:
+                    _LOGGER.error("/auth/me failed with HTTP %d", resp.status)
                 raise EnionApiError(f"/auth/me returned HTTP {resp.status}")
             data = await resp.json()
+            _LOGGER.debug("/auth/me successful, found %d devices", len(data.get("devices", [])))
 
             self._user_id = str(data["user"]["id"])
 
@@ -169,7 +194,14 @@ class EnionWebSocket:
             f"{WS_URL}?token={self._ws_token}"
             f"&vsn={WS_VERSION}"
         )
-        _LOGGER.debug("Connecting to Enion WebSocket: %s", url)
+        # Pre-truncate the token so the full JWT is never stored in a log record
+        # argument (Python's lazy % formatting keeps raw args in the LogRecord).
+        token_prefix = (self._ws_token or "")[:8]
+        _LOGGER.debug(
+            "Connecting to Enion WebSocket at %s (token=%s…)",
+            WS_URL,
+            token_prefix,
+        )
         self._ws = await asyncio.wait_for(
             self._session.ws_connect(url),
             timeout=_WS_CONNECT_TIMEOUT,
@@ -230,7 +262,16 @@ class EnionWebSocket:
         try:
             async for msg in self._ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    await self._handle_text(msg.data)
+                    # Catch per-message errors so a single bad payload never
+                    # kills the whole listener and forces an unnecessary reconnect.
+                    try:
+                        await self._handle_text(msg.data)
+                    except Exception as exc:  # noqa: BLE001
+                        _LOGGER.error(
+                            "Error processing WebSocket message: %s",
+                            exc,
+                            exc_info=True,
+                        )
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,
                     aiohttp.WSMsgType.ERROR,
@@ -240,7 +281,7 @@ class EnionWebSocket:
         except asyncio.CancelledError:
             pass
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.error("WebSocket listener error: %s", exc)
+            _LOGGER.error("WebSocket listener fatal error: %s", exc, exc_info=True)
         finally:
             self._connected = False
             # Only trigger reconnect for unexpected disconnects, not intentional ones.
@@ -266,4 +307,4 @@ class EnionWebSocket:
             else:
                 _LOGGER.debug("Unhandled WS event '%s': %s", event, payload)
         except (json.JSONDecodeError, ValueError) as exc:
-            _LOGGER.debug("Failed to parse WS message: %s — %s", raw, exc)
+            _LOGGER.debug("Failed to parse WS message: %.200s — %s", raw, exc)
