@@ -34,7 +34,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     # ------------------------------------------------------------------ Device online
     EnionBinarySensorDescription(
         key="enion_device_online",
-        name="Device Online",
+        name="Enion Device Online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         from_device=True,
         value_fn=lambda v: v.get("online"),
@@ -42,7 +42,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     # ------------------------------------------------------------------ Relays (3/0 – 3/4)
     EnionBinarySensorDescription(
         key="enion_relay_0",
-        name="Relay 1",
+        name="Enion Relay 1",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
         port_sub="0",
@@ -50,7 +50,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     ),
     EnionBinarySensorDescription(
         key="enion_relay_1",
-        name="Relay 2",
+        name="Enion Relay 2",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
         port_sub="1",
@@ -58,7 +58,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     ),
     EnionBinarySensorDescription(
         key="enion_relay_2",
-        name="Relay 3",
+        name="Enion Relay 3",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
         port_sub="2",
@@ -66,7 +66,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     ),
     EnionBinarySensorDescription(
         key="enion_relay_3",
-        name="Relay 4",
+        name="Enion Relay 4",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
         port_sub="3",
@@ -74,7 +74,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[EnionBinarySensorDescription, ...] = (
     ),
     EnionBinarySensorDescription(
         key="enion_relay_4",
-        name="Relay 5",
+        name="Enion Relay 5",
         device_class=BinarySensorDeviceClass.POWER,
         port_prefix=PORT_RELAY,
         port_sub="4",

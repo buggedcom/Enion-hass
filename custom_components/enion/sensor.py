@@ -65,7 +65,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Battery
     EnionSensorDescription(
         key="enion_battery_soc",
-        name="Battery State of Charge",
+        name="Enion Battery State of Charge",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
@@ -75,7 +75,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_power",
-        name="Battery Power",
+        name="Enion Battery Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -85,17 +85,17 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_energy",
-        name="Battery Energy",
+        name="Enion Battery Energy",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         port_prefix=PORT_BATTERY,
         port_sub="0",
         value_fn=lambda v: v.get("energy"),
     ),
     EnionSensorDescription(
         key="enion_battery_voltage_l1",
-        name="Battery Voltage L1",
+        name="Enion Battery Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -105,7 +105,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_voltage_l2",
-        name="Battery Voltage L2",
+        name="Enion Battery Voltage L2",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -115,7 +115,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_voltage_l3",
-        name="Battery Voltage L3",
+        name="Enion Battery Voltage L3",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -125,7 +125,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_current_l1",
-        name="Battery Current L1",
+        name="Enion Battery Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -135,7 +135,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_current_l2",
-        name="Battery Current L2",
+        name="Enion Battery Current L2",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -145,7 +145,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_current_l3",
-        name="Battery Current L3",
+        name="Enion Battery Current L3",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -155,7 +155,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_frequency",
-        name="Battery Frequency",
+        name="Enion Battery Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
@@ -165,7 +165,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_battery_status",
-        name="Battery Status",
+        name="Enion Battery Status",
         port_prefix=PORT_BATTERY,
         port_sub="0",
         value_fn=_parse_battery_status,
@@ -173,7 +173,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Grid (107/1 = power meter)
     EnionSensorDescription(
         key="enion_grid_power",
-        name="Grid Power",
+        name="Enion Grid Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -183,17 +183,17 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_energy",
-        name="Grid Energy (All Time)",
+        name="Enion Grid Energy (All Time)",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         port_prefix=PORT_GRID,
         port_sub="1",
         value_fn=lambda v: v.get("all_time_wh"),
     ),
     EnionSensorDescription(
         key="enion_grid_frequency",
-        name="Grid Frequency",
+        name="Enion Grid Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
@@ -203,7 +203,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_voltage_l1",
-        name="Grid Voltage L1",
+        name="Enion Grid Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -213,7 +213,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_voltage_l2",
-        name="Grid Voltage L2",
+        name="Enion Grid Voltage L2",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -223,7 +223,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_voltage_l3",
-        name="Grid Voltage L3",
+        name="Enion Grid Voltage L3",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -233,7 +233,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_current_l1",
-        name="Grid Current L1",
+        name="Enion Grid Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -243,7 +243,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_current_l2",
-        name="Grid Current L2",
+        name="Enion Grid Current L2",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -253,7 +253,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_grid_current_l3",
-        name="Grid Current L3",
+        name="Enion Grid Current L3",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -264,7 +264,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Energy meter (108/0)
     EnionSensorDescription(
         key="enion_energy_meter_power",
-        name="Energy Meter Power",
+        name="Enion Energy Meter Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -274,17 +274,17 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_energy",
-        name="Energy Meter Energy",
+        name="Enion Energy Meter Energy",
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         port_prefix=PORT_ENERGY,
         port_sub="0",
         value_fn=lambda v: v.get("energy"),
     ),
     EnionSensorDescription(
         key="enion_energy_meter_voltage_l1",
-        name="Energy Meter RMS Voltage L1",
+        name="Enion Energy Meter RMS Voltage L1",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -294,7 +294,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_voltage_l2",
-        name="Energy Meter RMS Voltage L2",
+        name="Enion Energy Meter RMS Voltage L2",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -304,7 +304,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_voltage_l3",
-        name="Energy Meter RMS Voltage L3",
+        name="Enion Energy Meter RMS Voltage L3",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -314,7 +314,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_current_l1",
-        name="Energy Meter Current L1",
+        name="Enion Energy Meter Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -324,7 +324,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_current_l2",
-        name="Energy Meter Current L2",
+        name="Enion Energy Meter Current L2",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -334,7 +334,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_current_l3",
-        name="Energy Meter Current L3",
+        name="Enion Energy Meter Current L3",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -345,7 +345,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Energy meter power factor and real power
     EnionSensorDescription(
         key="enion_energy_meter_power_factor_l1",
-        name="Energy Meter Power Factor L1",
+        name="Enion Energy Meter Power Factor L1",
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_ENERGY,
         port_sub="0",
@@ -353,7 +353,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_power_factor_l2",
-        name="Energy Meter Power Factor L2",
+        name="Enion Energy Meter Power Factor L2",
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_ENERGY,
         port_sub="0",
@@ -361,7 +361,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_power_factor_l3",
-        name="Energy Meter Power Factor L3",
+        name="Enion Energy Meter Power Factor L3",
         state_class=SensorStateClass.MEASUREMENT,
         port_prefix=PORT_ENERGY,
         port_sub="0",
@@ -369,7 +369,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_real_power_l1",
-        name="Energy Meter Real Power L1",
+        name="Enion Energy Meter Real Power L1",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -379,7 +379,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_real_power_l2",
-        name="Energy Meter Real Power L2",
+        name="Enion Energy Meter Real Power L2",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -389,7 +389,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_energy_meter_real_power_l3",
-        name="Energy Meter Real Power L3",
+        name="Enion Energy Meter Real Power L3",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -400,10 +400,10 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Electricity prices
     EnionSensorDescription(
         key="enion_electricity_price_current",
-        name="Electricity Price (Current Hour)",
+        name="Enion Electricity Price (Current Hour)",
         native_unit_of_measurement="ct/kWh",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=None,
         port_prefix=PORT_PRICES,
         port_sub="0",
         # Handled specially in EnionPriceSensor
@@ -411,10 +411,10 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_electricity_price_next",
-        name="Electricity Price (Next Hour)",
+        name="Enion Electricity Price (Next Hour)",
         native_unit_of_measurement="ct/kWh",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=None,
         port_prefix=PORT_PRICES,
         port_sub="0",
         value_fn=lambda v: None,
@@ -422,7 +422,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Weather
     EnionSensorDescription(
         key="enion_weather_temperature",
-        name="Outside Temperature",
+        name="Enion Outside Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -433,7 +433,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_weather_wind_speed",
-        name="Wind Speed",
+        name="Enion Wind Speed",
         native_unit_of_measurement="m/s",
         device_class=SensorDeviceClass.WIND_SPEED,
         state_class=SensorStateClass.MEASUREMENT,
@@ -443,7 +443,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_weather_wind_direction",
-        name="Wind Direction",
+        name="Enion Wind Direction",
         port_prefix=PORT_WEATHER,
         port_sub="0",
         # Handled specially in EnionWeatherSensor
@@ -451,7 +451,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     ),
     EnionSensorDescription(
         key="enion_weather_sun_condition",
-        name="Sun Condition",
+        name="Enion Sun Condition",
         port_prefix=PORT_WEATHER,
         port_sub="0",
         # Handled specially in EnionWeatherSensor
@@ -460,7 +460,7 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
     # ------------------------------------------------------------------ Battery Optimizer (220/0)
     EnionSensorDescription(
         key="enion_battery_optimizer_state",
-        name="Battery Optimizer State",
+        name="Enion Battery Optimizer State",
         port_prefix=PORT_OPTIMIZER,
         port_sub="0",
         # Handled specially in EnionOptimizerSensor
