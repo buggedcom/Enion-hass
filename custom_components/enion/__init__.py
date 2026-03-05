@@ -62,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    entry.async_on_unload(lambda: hass.async_create_task(coordinator.async_shutdown()))
+    entry.async_on_unload(coordinator.async_shutdown)
 
     _LOGGER.info("Enion entry setup complete: %s", entry.title)
     return True

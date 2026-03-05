@@ -200,6 +200,8 @@ class EnionWeatherCalendar(CoordinatorEntity[EnionCoordinator], CalendarEntity):
     def event(self) -> CalendarEvent | None:
         """Return the weather event covering the current moment, if any."""
         now = datetime.now(timezone.utc)
+        if self.coordinator.data is None:
+            return None
         for entry in self.coordinator.data.get(DATA_WEATHER, []):
             ts = entry.get("ts", 0)
             start = datetime.fromtimestamp(ts, tz=timezone.utc)
@@ -218,6 +220,8 @@ class EnionWeatherCalendar(CoordinatorEntity[EnionCoordinator], CalendarEntity):
             end_date = end_date.replace(tzinfo=timezone.utc)
 
         events = []
+        if self.coordinator.data is None:
+            return events
         for entry in self.coordinator.data.get(DATA_WEATHER, []):
             try:
                 ts = entry["ts"]

@@ -588,6 +588,8 @@ class EnionWeatherSensor(CoordinatorEntity[EnionCoordinator], SensorEntity):
     def native_value(self) -> Any:
         import time
         now = int(time.time())
+        if self.coordinator.data is None:
+            return None
         for entry in self.coordinator.data.get("weather", []):
             ts = entry.get("ts", 0)
             if ts <= now < ts + 3600:

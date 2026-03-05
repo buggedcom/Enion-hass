@@ -5,7 +5,7 @@ calls are ever made.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -17,6 +17,38 @@ from custom_components.enion.const import DOMAIN
 from tests.conftest import ME_RESPONSE
 
 PATCH_VALIDATE = "custom_components.enion.config_flow._validate_credentials"
+
+
+@pytest.fixture(autouse=True)
+def mock_coordinator_setup():
+    """Prevent real network calls when HA automatically sets up a new config entry.
+
+    Creating a config entry via the flow causes HA to call async_setup_entry,
+    which in turn calls coordinator.async_setup() (login + WebSocket connect).
+    On CI the sandbox blocks outbound connections, leaving a stray aiohttp
+    thread that trips pytest-homeassistant-custom-component's teardown check.
+    Patching at the coordinator level keeps the config-flow tests focused on
+    flow behaviour only.
+    """
+    with (
+        patch(
+            "custom_components.enion.EnionCoordinator.async_setup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.enion.EnionCoordinator.async_config_entry_first_refresh",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.enion.EnionClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.enion.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+    ):
+        yield
 
 USER_INPUT = {
     CONF_EMAIL: "test@example.com",
