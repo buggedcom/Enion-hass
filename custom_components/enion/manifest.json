@@ -1,6 +1,7 @@
 {
   "domain": "enion",
   "name": "Enion",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@buggedcom"],
   "config_flow": true,
   "dependencies": [],

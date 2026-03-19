@@ -39,3 +39,4 @@ config/
 # Claude
 .claude/
 /.claude
+/_dev

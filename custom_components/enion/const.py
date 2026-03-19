@@ -12,6 +12,7 @@ API_ME = f"{API_BASE}/auth/me"
 API_WIDGETS = f"{API_BASE}/widgets"
 API_PRICES = f"{API_BASE}/data/prices"
 API_HISTORY_POWER = f"{API_BASE}/history/power"
+API_PROFITS = f"{API_BASE}/profits"
 
 # WebSocket
 WS_URL = "wss://app.enion.fi/socket/websocket"
@@ -47,4 +48,5 @@ DATA_PORTS = "ports"
 DATA_PRICES = "prices"
 DATA_WEATHER = "weather"
 DATA_OPTIMIZER = "optimizer"
+DATA_PROFITS = "profits"
 DATA_USER = "user"

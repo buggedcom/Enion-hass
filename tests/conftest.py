@@ -129,6 +129,27 @@ WS_DEVICE_EVENT = {
     },
 }
 
+PROFITS_RESPONSE = [
+    {
+        "timestamp": "2026-03-08T22:00:00.000Z",
+        "batt_power": 23.07,
+        "spot_saving": 0.14,
+        "fcr_down_power": 11883.0,
+        "fcr_down_price": 1.01,
+        "fcr_up_power": 11975.0,
+        "fcr_up_price": 1.36,
+    },
+    {
+        "timestamp": "2026-03-09T22:00:00.000Z",
+        "batt_power": -60.87,
+        "spot_saving": 1.11,
+        "fcr_down_power": 1.24e4,
+        "fcr_down_price": 0.83,
+        "fcr_up_power": 12496.0,
+        "fcr_up_price": 1.15,
+    },
+]
+
 WS_UPDATE_OPTIMIZER = {
     "device_id": 2392,
     "event": "update",

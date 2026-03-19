@@ -35,6 +35,7 @@ from .const import (
     PORT_WEATHER,
     DATA_DEVICE,
     DATA_PORTS,
+    DATA_PROFITS,
     DATA_USER,
 )
 from .coordinator import EnionCoordinator
@@ -316,8 +317,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("rms_voltage") or [None, None, None])[2],
     ),
     EnionSensorDescription(
-        key="enion_energy_meter_current_l1",
-        name="Enion Energy Meter Current L1",
+        key="enion_grid_current_l1",
+        name="Enion Grid Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -326,8 +327,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("cur_current") or [None])[0],
     ),
     EnionSensorDescription(
-        key="enion_energy_meter_current_l2",
-        name="Enion Energy Meter Current L2",
+        key="enion_grid_current_l2",
+        name="Enion Grid Current L2",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -336,8 +337,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("cur_current") or [None, None])[1],
     ),
     EnionSensorDescription(
-        key="enion_energy_meter_current_l3",
-        name="Enion Energy Meter Current L3",
+        key="enion_grid_current_l3",
+        name="Enion Grid Current L3",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -643,6 +644,52 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # ------------------------------------------------------------------ Profits
+    EnionSensorDescription(
+        key="enion_profit_spot_saving_today",
+        name="Enion Spot Saving Today",
+        native_unit_of_measurement="EUR",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        port_prefix="profits",
+        value_fn=lambda v: None,  # handled by EnionProfitSensor
+    ),
+    EnionSensorDescription(
+        key="enion_profit_fcr_total_today",
+        name="Enion FCR Earnings Today",
+        native_unit_of_measurement="EUR",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        port_prefix="profits",
+        value_fn=lambda v: None,
+    ),
+    EnionSensorDescription(
+        key="enion_profit_total_today",
+        name="Enion Total Profit Today",
+        native_unit_of_measurement="EUR",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        port_prefix="profits",
+        value_fn=lambda v: None,
+    ),
+    EnionSensorDescription(
+        key="enion_profit_spot_saving_month",
+        name="Enion Spot Saving This Month",
+        native_unit_of_measurement="EUR",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        port_prefix="profits",
+        value_fn=lambda v: None,
+    ),
+    EnionSensorDescription(
+        key="enion_profit_fcr_total_month",
+        name="Enion FCR Earnings This Month",
+        native_unit_of_measurement="EUR",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        port_prefix="profits",
+        value_fn=lambda v: None,
+    ),
 )
 
 
@@ -671,6 +718,8 @@ async def async_setup_entry(
             entities.append(EnionOptimizerSensor(coordinator, entry, desc))
         elif desc.port_prefix == "user":
             entities.append(EnionUserSensor(coordinator, entry, desc))
+        elif desc.port_prefix == "profits":
+            entities.append(EnionProfitSensor(coordinator, entry, desc))
         else:
             entities.append(EnionPortSensor(coordinator, entry, desc))
 
@@ -852,4 +901,45 @@ class EnionUserSensor(CoordinatorEntity[EnionCoordinator], SensorEntity):
     def native_value(self) -> Any:
         user_info = self.coordinator.get_user_info()
         return self.entity_description.value_fn(user_info)
+
+
+# Map sensor key → (period, field) for profit sensors
+_PROFIT_SENSOR_MAP: dict[str, tuple[str, str]] = {
+    "enion_profit_spot_saving_today": ("today", "spot_saving"),
+    "enion_profit_fcr_total_today": ("today", "fcr_total"),
+    "enion_profit_total_today": ("today", "total"),
+    "enion_profit_spot_saving_month": ("month", "spot_saving"),
+    "enion_profit_fcr_total_month": ("month", "fcr_total"),
+}
+
+
+class EnionProfitSensor(CoordinatorEntity[EnionCoordinator], SensorEntity):
+    """A sensor showing today's or this month's profit summary."""
+
+    entity_description: EnionSensorDescription
+
+    def __init__(
+        self,
+        coordinator: EnionCoordinator,
+        entry: ConfigEntry,
+        description: EnionSensorDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = _make_device_info(coordinator, entry)
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        if description.entity_category:
+            self._attr_entity_category = description.entity_category
+        period, field = _PROFIT_SENSOR_MAP[description.key]
+        self._period = period
+        self._field = field
+
+    @property
+    def native_value(self) -> float | None:
+        if self._period == "today":
+            summary = self.coordinator.get_profits_today()
+        else:
+            summary = self.coordinator.get_profits_month()
+        return round(summary[self._field], 4)
 

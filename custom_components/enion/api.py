@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Any, Callable
 
 import aiohttp
@@ -11,6 +12,7 @@ import aiohttp
 from .const import (
     API_LOGIN,
     API_ME,
+    API_PROFITS,
     WS_URL,
     WS_VERSION,
     WS_EVENT_UPDATE,
@@ -138,6 +140,38 @@ class EnionClient:
                 )
 
             return data
+
+    async def fetch_profits(
+        self,
+        port_id: int,
+        from_dt: datetime,
+        to_dt: datetime,
+        steps: str = "day",
+    ) -> list[dict[str, Any]]:
+        """GET /api/v1/profits/{port_id}?from=...&to=...&steps=...
+
+        Returns a list of per-period profit records.
+        """
+        url = f"{API_PROFITS}/{port_id}"
+        params = {
+            "from": from_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "to": to_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "steps": steps,
+        }
+        headers = (
+            {"Authorization": f"Bearer {self._ws_token}"} if self._ws_token else {}
+        )
+        _LOGGER.debug("Fetching profits for port_id=%s from=%s to=%s", port_id, params["from"], params["to"])
+        async with self._session.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=_HTTP_TIMEOUT,
+        ) as resp:
+            _LOGGER.debug("Profits response status: %d", resp.status)
+            if resp.status != 200:
+                raise EnionApiError(f"profits returned HTTP {resp.status}")
+            return await resp.json()
 
     @property
     def user_id(self) -> str | None:

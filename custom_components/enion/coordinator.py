@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import time
 from typing import Any
 
 import aiohttp
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util.dt import utcnow
 
 from .api import EnionClient, EnionWebSocket
 from .const import (
@@ -24,6 +26,7 @@ from .const import (
     DATA_DEVICE,
     DATA_PORTS,
     DATA_PRICES,
+    DATA_PROFITS,
     DATA_WEATHER,
     DATA_OPTIMIZER,
     DATA_USER,
@@ -160,8 +163,13 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             DATA_PRICES: [],
             DATA_WEATHER: [],
             DATA_OPTIMIZER: {},
+            DATA_PROFITS: [],
             DATA_USER: {},
         }
+
+        # Profits polling state
+        self._profits_fetch_in_progress: bool = False
+        self._profits_unsub: Any = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -171,6 +179,10 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Login, fetch profile, seed data store, and connect the WebSocket."""
         await self._login_and_seed()
         await self._connect_ws()
+        await self._fetch_and_store_profits()
+        self._profits_unsub = async_track_time_interval(
+            self.hass, self._scheduled_profits_fetch, timedelta(hours=1)
+        )
 
     async def _login_and_seed(self) -> None:
         """Perform login + /auth/me and seed the data store."""
@@ -276,6 +288,9 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_shutdown(self) -> None:
         """Disconnect cleanly on HA stop."""
+        if self._profits_unsub is not None:
+            self._profits_unsub()
+            self._profits_unsub = None
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
         if self._ws:
@@ -433,6 +448,167 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._store[DATA_OPTIMIZER].update(values)
 
         self._notify_listeners()
+
+    # ------------------------------------------------------------------
+    # Profits polling
+    # ------------------------------------------------------------------
+
+    async def _scheduled_profits_fetch(self, _now: Any = None) -> None:
+        """Called by async_track_time_interval every hour."""
+        await self._fetch_and_store_profits()
+
+    async def _fetch_and_store_profits(self) -> None:
+        """Fetch the rolling 90-day profit window and update the store + statistics."""
+        if self._profits_fetch_in_progress:
+            _LOGGER.debug("Profits fetch already in progress, skipping")
+            return
+
+        port_id = self.find_port_by_prefix(PORT_BATTERY, "0")
+        if port_id is None:
+            _LOGGER.warning(
+                "Cannot fetch profits: battery port (22/0) not found in port store"
+            )
+            return
+
+        self._profits_fetch_in_progress = True
+        try:
+            to_dt = utcnow()
+            from_dt = to_dt - timedelta(days=90)
+            records: list[dict[str, Any]] = await self._client.fetch_profits(
+                port_id, from_dt, to_dt
+            )
+            self._store[DATA_PROFITS] = records
+            _LOGGER.debug("Fetched %d profit records", len(records))
+            self._inject_profit_statistics(records)
+            self._notify_listeners()
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.error("Failed to fetch profits: %s", exc)
+        finally:
+            self._profits_fetch_in_progress = False
+
+    def _inject_profit_statistics(self, records: list[dict[str, Any]]) -> None:
+        """Inject profit data as HA external statistics for Energy dashboard backfill."""
+        if not records:
+            return
+
+        try:
+            from homeassistant.components.recorder import get_instance
+            from homeassistant.components.recorder.models import (
+                StatisticData,
+                StatisticMetaData,
+            )
+            from homeassistant.components.recorder.statistics import (
+                async_add_external_statistics,
+            )
+        except ImportError:
+            _LOGGER.debug("Recorder not available, skipping statistics injection")
+            return
+
+        # Sort records chronologically so cumulative sums build correctly
+        sorted_records = sorted(records, key=lambda r: r.get("timestamp", ""))
+
+        stat_keys = {
+            "profit_spot_saving": "spot_saving",
+            "profit_fcr_down": "fcr_down_price",
+            "profit_fcr_up": "fcr_up_price",
+        }
+
+        for stat_suffix, field in stat_keys.items():
+            statistic_id = f"{DOMAIN}:{stat_suffix}"
+            metadata = StatisticMetaData(
+                source=DOMAIN,
+                statistic_id=statistic_id,
+                name=f"Enion {stat_suffix.replace('_', ' ').title()}",
+                unit_of_measurement="EUR",
+                has_mean=False,
+                has_sum=True,
+            )
+            cumulative = 0.0
+            stat_data: list[StatisticData] = []
+            for rec in sorted_records:
+                value = float(rec.get(field) or 0.0)
+                cumulative += value
+                try:
+                    start = datetime.fromisoformat(
+                        rec["timestamp"].replace("Z", "+00:00")
+                    )
+                except (KeyError, ValueError):
+                    continue
+                stat_data.append(
+                    StatisticData(start=start, state=value, sum=cumulative)
+                )
+
+            async_add_external_statistics(self.hass, metadata, stat_data)
+
+        # Combined total statistic
+        statistic_id = f"{DOMAIN}:profit_total"
+        metadata = StatisticMetaData(
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            name="Enion Profit Total",
+            unit_of_measurement="EUR",
+            has_mean=False,
+            has_sum=True,
+        )
+        cumulative = 0.0
+        stat_data = []
+        for rec in sorted_records:
+            value = float(
+                (rec.get("spot_saving") or 0.0)
+                + (rec.get("fcr_down_price") or 0.0)
+                + (rec.get("fcr_up_price") or 0.0)
+            )
+            cumulative += value
+            try:
+                start = datetime.fromisoformat(
+                    rec["timestamp"].replace("Z", "+00:00")
+                )
+            except (KeyError, ValueError):
+                continue
+            stat_data.append(StatisticData(start=start, state=value, sum=cumulative))
+
+        async_add_external_statistics(self.hass, metadata, stat_data)
+
+    def get_profits_today(self) -> dict[str, float]:
+        """Return summed profit fields for the current calendar day (local time)."""
+        return self._sum_profits_for_period("today")
+
+    def get_profits_month(self) -> dict[str, float]:
+        """Return summed profit fields for the current calendar month (local time)."""
+        return self._sum_profits_for_period("month")
+
+    def _sum_profits_for_period(self, period: str) -> dict[str, float]:
+        """Sum profit records matching the given period ('today' or 'month').
+
+        Timestamps from the API are UTC; we compare against local date so the
+        sensor resets at local midnight rather than UTC midnight.
+        """
+        import time as _time
+        local_now = _time.localtime()
+        today_date = (local_now.tm_year, local_now.tm_mon, local_now.tm_mday)
+        month_key = (local_now.tm_year, local_now.tm_mon)
+
+        spot = 0.0
+        fcr = 0.0
+        for rec in self._store.get(DATA_PROFITS, []):
+            ts_str = rec.get("timestamp", "")
+            try:
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                local_dt = _time.localtime(dt.timestamp())
+                rec_date = (local_dt.tm_year, local_dt.tm_mon, local_dt.tm_mday)
+                rec_month = (local_dt.tm_year, local_dt.tm_mon)
+            except (ValueError, AttributeError, OSError):
+                continue
+
+            if period == "today" and rec_date != today_date:
+                continue
+            if period == "month" and rec_month != month_key:
+                continue
+
+            spot += float(rec.get("spot_saving") or 0.0)
+            fcr += float((rec.get("fcr_down_price") or 0.0) + (rec.get("fcr_up_price") or 0.0))
+
+        return {"spot_saving": spot, "fcr_total": fcr, "total": spot + fcr}
 
     # ------------------------------------------------------------------
     # Convenience accessors used by entities

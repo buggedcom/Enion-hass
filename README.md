@@ -24,7 +24,7 @@ All device data is pushed in real time through Enion's cloud backend and is acce
 
 ## Features
 
-This integration connects Home Assistant to the Enion cloud using the same API as the official web app. Data arrives instantly via a persistent WebSocket (Phoenix channels) — there is no polling.
+This integration connects Home Assistant to the Enion cloud using the same API as the official web app. Real-time data (power, battery, prices) arrives instantly via a persistent WebSocket (Phoenix channels). Profit and earnings data is fetched from the REST API every hour and injected into Home Assistant's long-term statistics.
 
 Depending on your Enion setup we can probably expose more entities, however Please create an issue with information from your HA logs.
 
@@ -102,6 +102,27 @@ Depending on your Enion setup we can probably expose more entities, however Plea
 | Entity | Description |
 |---|---|
 | `sensor.enion_battery_optimizer_state` | Current optimizer state and schedule as attributes |
+
+#### Profits & Earnings
+
+Earnings data is fetched from the Enion REST API every hour using a rolling 90-day window. FCR (Frequency Containment Reserve) prices settle approximately 3 days after delivery — the hourly refresh means backfilled values are picked up automatically without any manual action.
+
+| Entity | Unit | Description |
+|---|---|---|
+| `sensor.enion_spot_saving_today` | EUR | Battery spot-price arbitrage savings for today |
+| `sensor.enion_fcr_earnings_today` | EUR | Combined FCR-D up + down reserve earnings for today |
+| `sensor.enion_total_profit_today` | EUR | Total earnings (spot + FCR) for today |
+| `sensor.enion_spot_saving_this_month` | EUR | Battery spot-price arbitrage savings for the current month |
+| `sensor.enion_fcr_earnings_this_month` | EUR | Combined FCR reserve earnings for the current month |
+
+In addition to the sensor entities above, the integration injects the full 90-day history into Home Assistant's **long-term statistics** under the following IDs. These are accessible via the **Statistics** panel in Developer Tools and can be added to Energy dashboard cards:
+
+| Statistic ID | Unit | Description |
+|---|---|---|
+| `enion:profit_spot_saving` | EUR | Daily spot-price savings |
+| `enion:profit_fcr_down` | EUR | Daily FCR-D down earnings |
+| `enion:profit_fcr_up` | EUR | Daily FCR-D up earnings |
+| `enion:profit_total` | EUR | Daily combined earnings |
 
 #### User Account & Settings
 
@@ -204,18 +225,20 @@ If your session expires or you change your password, Home Assistant will prompt 
 ## How it works
 
 ```
-Enion cloud  ──REST──▶  Login + /auth/me  (on startup)
-             ◀──WSS──   Phoenix WebSocket  (persistent, real-time)
+Enion cloud  ──REST──▶  Login + /auth/me       (on startup)
+             ──REST──▶  /profits/{port_id}      (on startup, then every hour)
+             ◀──WSS──   Phoenix WebSocket        (persistent, real-time)
                               │
                     update / device events
                               │
-                    Home Assistant entities
+                    Home Assistant entities + long-term statistics
 ```
 
 1. On startup the integration logs in, fetches the device profile (`/auth/me`), and seeds all entities with initial values.
 2. A Phoenix WebSocket connection is then opened to `wss://app.enion.fi/socket/websocket`, subscribing to the user channel (`web:user:{id}`) and the global channel (`web:global:0`).
 3. Every `update` event from the cloud is dispatched immediately to the relevant HA entities — no polling, no delay.
-4. If the connection drops, automatic reconnection uses exponential backoff (30 s → 60 s → … → 10 min cap) to avoid hammering the API.
+4. Profits are fetched from the REST API on startup and then every hour, covering a rolling 90-day window. Results are injected into HA's long-term statistics so the Energy dashboard shows historical earnings and FCR backfill is picked up automatically.
+5. If the WebSocket drops, automatic reconnection uses exponential backoff (30 s → 60 s → … → 10 min cap) to avoid hammering the API.
 
 ---
 
