@@ -317,8 +317,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("rms_voltage") or [None, None, None])[2],
     ),
     EnionSensorDescription(
-        key="enion_grid_current_l1",
-        name="Enion Grid Current L1",
+        key="enion_energy_meter_current_l1",
+        name="Enion Energy Meter Current L1",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -327,8 +327,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("cur_current") or [None])[0],
     ),
     EnionSensorDescription(
-        key="enion_grid_current_l2",
-        name="Enion Grid Current L2",
+        key="enion_energy_meter_current_l2",
+        name="Enion Energy Meter Current L2",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -337,8 +337,8 @@ SENSOR_DESCRIPTIONS: tuple[EnionSensorDescription, ...] = (
         value_fn=lambda v: (v.get("cur_current") or [None, None])[1],
     ),
     EnionSensorDescription(
-        key="enion_grid_current_l3",
-        name="Enion Grid Current L3",
+        key="enion_energy_meter_current_l3",
+        name="Enion Energy Meter Current L3",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,

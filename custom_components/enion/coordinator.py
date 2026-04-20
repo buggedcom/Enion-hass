@@ -472,7 +472,19 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._profits_fetch_in_progress = True
         try:
-            to_dt = utcnow()
+            # The WS JWT used as Bearer expires after ~15 min; the hourly
+            # scheduler will always hit a stale token, so re-login first.
+            token_age = time.monotonic() - self._last_login_at
+            if token_age >= _TOKEN_MAX_AGE:
+                _LOGGER.debug(
+                    "WS token age %.0fs >= %ds, re-logging in for profits fetch",
+                    token_age, _TOKEN_MAX_AGE,
+                )
+                await self._client.login(self._email, self._password)
+                self._last_login_at = time.monotonic()
+
+            # API requires timestamps rounded to the top of the hour.
+            to_dt = utcnow().replace(minute=0, second=0, microsecond=0)
             from_dt = to_dt - timedelta(days=90)
             records: list[dict[str, Any]] = await self._client.fetch_profits(
                 port_id, from_dt, to_dt
@@ -504,6 +516,14 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Recorder not available, skipping statistics injection")
             return
 
+        # mean_type was added in HA 2025.x and becomes mandatory in 2026.11;
+        # fall back gracefully on older cores that lack the enum.
+        try:
+            from homeassistant.components.recorder.models import StatisticMeanType
+            _mean_type: Any = StatisticMeanType.NONE
+        except ImportError:
+            _mean_type = None
+
         # Sort records chronologically so cumulative sums build correctly
         sorted_records = sorted(records, key=lambda r: r.get("timestamp", ""))
 
@@ -515,7 +535,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         for stat_suffix, field in stat_keys.items():
             statistic_id = f"{DOMAIN}:{stat_suffix}"
-            metadata = StatisticMetaData(
+            meta_kwargs: dict[str, Any] = dict(
                 source=DOMAIN,
                 statistic_id=statistic_id,
                 name=f"Enion {stat_suffix.replace('_', ' ').title()}",
@@ -523,6 +543,9 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 has_mean=False,
                 has_sum=True,
             )
+            if _mean_type is not None:
+                meta_kwargs["mean_type"] = _mean_type
+            metadata = StatisticMetaData(**meta_kwargs)
             cumulative = 0.0
             stat_data: list[StatisticData] = []
             for rec in sorted_records:
@@ -542,7 +565,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Combined total statistic
         statistic_id = f"{DOMAIN}:profit_total"
-        metadata = StatisticMetaData(
+        total_meta_kwargs: dict[str, Any] = dict(
             source=DOMAIN,
             statistic_id=statistic_id,
             name="Enion Profit Total",
@@ -550,6 +573,9 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             has_mean=False,
             has_sum=True,
         )
+        if _mean_type is not None:
+            total_meta_kwargs["mean_type"] = _mean_type
+        metadata = StatisticMetaData(**total_meta_kwargs)
         cumulative = 0.0
         stat_data = []
         for rec in sorted_records:
