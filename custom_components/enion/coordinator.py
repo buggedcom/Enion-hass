@@ -540,6 +540,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 statistic_id=statistic_id,
                 name=f"Enion {stat_suffix.replace('_', ' ').title()}",
                 unit_of_measurement="EUR",
+                unit_class=None,
                 has_mean=False,
                 has_sum=True,
             )
@@ -570,6 +571,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             statistic_id=statistic_id,
             name="Enion Profit Total",
             unit_of_measurement="EUR",
+            unit_class=None,
             has_mean=False,
             has_sum=True,
         )
