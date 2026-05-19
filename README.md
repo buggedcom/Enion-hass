@@ -161,6 +161,17 @@ In addition to the sensor entities above, the integration injects the full 90-da
 | `binary_sensor.enion_relay_4` | On/off state of relay output 4 |
 | `binary_sensor.enion_relay_5` | On/off state of relay output 5 |
 
+### Switches
+
+| Entity | Description |
+|---|---|
+| `switch.enion_charge_1h` | Start a one-hour manual battery charging override |
+| `switch.enion_discharge_1h` | Start a one-hour manual battery discharging override |
+| `switch.enion_stop_1h` | Stop battery power flow for one hour |
+| `switch.enion_cancel_action` | Cancel an active manual battery override |
+
+Only the currently valid optimizer action switches are available in Home Assistant. When no manual override is active, the `charge`, `discharge`, and `stop` switches are available and `cancel action` is unavailable. When a manual override is active, those three switches become unavailable and `cancel action` becomes available.
+
 ### Calendars
 
 | Entity | Description |

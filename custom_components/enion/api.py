@@ -12,6 +12,7 @@ import aiohttp
 from .const import (
     API_LOGIN,
     API_ME,
+    API_PORTS,
     API_PROFITS,
     WS_URL,
     WS_VERSION,
@@ -172,6 +173,36 @@ class EnionClient:
             if resp.status != 200:
                 raise EnionApiError(f"profits returned HTTP {resp.status}")
             return await resp.json()
+
+    async def async_update_port_value(self, port_id: int, name: str, value: Any) -> None:
+        """PUT a named value update to a specific Enion port."""
+        url = f"{API_PORTS}/{port_id}"
+        payload = {"values": {"name": name, "value": value}}
+        headers = (
+            {"Authorization": f"Bearer {self._ws_token}"} if self._ws_token else {}
+        )
+        _LOGGER.debug(
+            "Updating port_id=%s with name=%s value=%s",
+            port_id,
+            name,
+            value,
+        )
+        async with self._session.put(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=_HTTP_TIMEOUT,
+        ) as resp:
+            _LOGGER.debug("Port update response status: %d", resp.status)
+            if resp.status not in (200, 204):
+                try:
+                    error_body = await resp.text()
+                    _LOGGER.error(
+                        "Port update failed with HTTP %d: %s", resp.status, error_body
+                    )
+                except Exception:
+                    _LOGGER.error("Port update failed with HTTP %d", resp.status)
+                raise EnionApiError(f"port update returned HTTP {resp.status}")
 
     @property
     def user_id(self) -> str | None:

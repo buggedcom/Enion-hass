@@ -26,6 +26,7 @@ def _make_response(status: int = 200, json_data: dict | None = None) -> MagicMoc
     resp = MagicMock()
     resp.status = status
     resp.json = AsyncMock(return_value=json_data or {})
+    resp.text = AsyncMock(return_value="")
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(return_value=resp)
     cm.__aexit__ = AsyncMock(return_value=False)
@@ -38,6 +39,7 @@ def _make_session(post_status=200, post_data=None, get_status=200, get_data=None
     session = MagicMock()
     session.post.return_value = _make_response(post_status, post_data)
     session.get.return_value = _make_response(get_status, get_data)
+    session.put.return_value = _make_response()
     return session
 
 
@@ -178,6 +180,35 @@ class TestEnionClientFetchMe:
         with patch("custom_components.enion.api._LOGGER") as mock_logger:
             await client.fetch_me()
             mock_logger.warning.assert_called_once()
+
+
+class TestEnionClientUpdatePortValue:
+    async def test_sends_correct_request(self):
+        session = _make_session()
+        client = EnionClient(session)
+        client._ws_token = "test-token"
+
+        await client.async_update_port_value(104267, "override_power", 0)
+
+        session.put.assert_called_once()
+        _, kwargs = session.put.call_args
+        assert kwargs["json"] == {"values": {"name": "override_power", "value": 0}}
+        assert kwargs["headers"] == {"Authorization": "Bearer test-token"}
+
+    async def test_accepts_204_success(self):
+        session = _make_session()
+        session.put.return_value = _make_response(status=204)
+        client = EnionClient(session)
+
+        await client.async_update_port_value(104267, "override_power", 1000000)
+
+    async def test_raises_on_error_status(self):
+        session = _make_session()
+        session.put.return_value = _make_response(status=500)
+        client = EnionClient(session)
+
+        with pytest.raises(EnionApiError):
+            await client.async_update_port_value(104267, "override_power", -1000000)
 
 
 # ---------------------------------------------------------------------------

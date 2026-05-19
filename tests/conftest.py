@@ -168,3 +168,28 @@ WS_UPDATE_OPTIMIZER = {
         ],
     },
 }
+
+WS_UPDATE_OPTIMIZER_OVERRIDE = {
+    **WS_UPDATE_OPTIMIZER,
+    "values": {
+        **WS_UPDATE_OPTIMIZER["values"],
+        "events": [
+            ["2026-03-05T17:00:00Z", {"state": "BATTERY_OPTIMIZER_STATE_OVERRIDE", "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN", "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN"}],
+            ["2026-03-05T18:00:00Z", {"state": "BATTERY_OPTIMIZER_STATE_NET_ZERO", "reserve_up": "BATOPT_EVENT_RESERVE_UNKNOWN", "reserve_dn": "BATOPT_EVENT_RESERVE_UNKNOWN"}],
+        ],
+    },
+}
+
+ME_RESPONSE_NO_OPTIMIZER = {
+    **ME_RESPONSE,
+    "devices": [
+        {
+            **ME_RESPONSE["devices"][0],
+            "ports": [
+                port
+                for port in ME_RESPONSE["devices"][0]["ports"]
+                if port["port_number"] != "220/0"
+            ],
+        }
+    ],
+}

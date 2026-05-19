@@ -686,6 +686,34 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Battery Optimizer (220/0)
     # ------------------------------------------------------------------
 
+    def find_optimizer_port_id(self) -> int | None:
+        """Return the battery optimizer port ID if present."""
+        return self.find_port_by_prefix(PORT_OPTIMIZER, "0")
+
+    def is_optimizer_override_active(self) -> bool:
+        """Return whether the optimizer is currently in manual override."""
+        optimizer_data = self._store.get(DATA_OPTIMIZER, {})
+        events = optimizer_data.get("events") or []
+        if not events:
+            return False
+
+        first_event = events[0]
+        if not isinstance(first_event, (list, tuple)) or len(first_event) < 2:
+            return False
+
+        event_data = first_event[1]
+        if not isinstance(event_data, dict):
+            return False
+
+        return event_data.get("state") == "BATTERY_OPTIMIZER_STATE_OVERRIDE"
+
+    async def async_send_optimizer_override(self, value: int) -> None:
+        """Send a manual optimizer override command to Enion."""
+        port_id = self.find_optimizer_port_id()
+        if port_id is None:
+            raise ValueError("Battery optimizer port not found")
+        await self._client.async_update_port_value(port_id, "override_power", value)
+
     def get_optimizer_state(self) -> tuple[str | None, str | None, list[dict[str, Any]]]:
         """Get battery optimizer current state, next state/time, and full schedule.
 

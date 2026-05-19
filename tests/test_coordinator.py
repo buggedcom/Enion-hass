@@ -28,6 +28,7 @@ from tests.conftest import (
     WS_DEVICE_EVENT,
     WS_UPDATE_BATTERY,
     WS_UPDATE_OPTIMIZER,
+    WS_UPDATE_OPTIMIZER_OVERRIDE,
     WS_UPDATE_PRICES,
     WS_UPDATE_WEATHER,
 )
@@ -231,6 +232,11 @@ class TestFindPortByPrefix:
         coordinator._seed_from_me(ME_RESPONSE)
         result = coordinator.find_port_by_prefix("3", "0")
         assert result == 104225
+
+    async def test_finds_optimizer_port(self, coordinator):
+        coordinator._seed_from_me(ME_RESPONSE)
+        result = coordinator.find_optimizer_port_id()
+        assert result == 104267
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +603,20 @@ class TestOptimizerState:
             _, _, schedule = coordinator.get_optimizer_state()
         assert schedule[0]["reserve_up"] == "BATOPT_EVENT_RESERVE_UNKNOWN"
         assert schedule[0]["reserve_dn"] == "BATOPT_EVENT_RESERVE_UNKNOWN"
+
+
+class TestOptimizerOverrideState:
+    async def test_override_inactive_for_default_fixture(self, coordinator):
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator._handle_update(WS_UPDATE_OPTIMIZER)
+
+        assert coordinator.is_optimizer_override_active() is False
+
+    async def test_override_active_when_first_event_is_override(self, coordinator):
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
+
+        assert coordinator.is_optimizer_override_active() is True
 
 
 # ---------------------------------------------------------------------------
