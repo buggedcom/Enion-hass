@@ -25,7 +25,6 @@ class EnionSwitchDescription(SwitchEntityDescription):
     """Describe an Enion optimizer action switch."""
 
     command_value: int
-    is_cancel: bool = False
 
 
 SWITCH_DESCRIPTIONS: tuple[EnionSwitchDescription, ...] = (
@@ -44,12 +43,6 @@ SWITCH_DESCRIPTIONS: tuple[EnionSwitchDescription, ...] = (
         name="Enion Stop 1h",
         command_value=CMD_STOP,
     ),
-    EnionSwitchDescription(
-        key="enion_cancel_action",
-        name="Enion Cancel action",
-        command_value=CMD_CANCEL,
-        is_cancel=True,
-    ),
 )
 
 
@@ -67,7 +60,7 @@ async def async_setup_entry(
 
 
 class EnionOptimizerActionSwitch(CoordinatorEntity[EnionCoordinator], SwitchEntity):
-    """Action-like switch that sends an optimizer override command."""
+    """Switch representing one active optimizer override action."""
 
     entity_description: EnionSwitchDescription
 
@@ -88,15 +81,18 @@ class EnionOptimizerActionSwitch(CoordinatorEntity[EnionCoordinator], SwitchEnti
             return False
 
         override_active = self.coordinator.is_optimizer_override_active()
-        if self.entity_description.is_cancel:
-            return override_active
-        return not override_active
+        if not override_active:
+            return True
+
+        active_command = self.coordinator.get_active_optimizer_override_command()
+        return active_command == self.entity_description.command_value
 
     @property
     def is_on(self) -> bool:
-        if self.entity_description.is_cancel:
-            return self.coordinator.is_optimizer_override_active()
-        return False
+        return (
+            self.coordinator.get_active_optimizer_override_command()
+            == self.entity_description.command_value
+        )
 
     async def async_turn_on(self, **kwargs) -> None:
         """Send the optimizer override command."""
@@ -107,6 +103,6 @@ class EnionOptimizerActionSwitch(CoordinatorEntity[EnionCoordinator], SwitchEnti
         )
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Allow cancel switch to clear override; no-op for action switches."""
-        if self.entity_description.is_cancel:
-            await self.async_turn_on(**kwargs)
+        """Cancel the current override when turning off the active switch."""
+        if self.is_on:
+            await self.coordinator.async_send_optimizer_override(CMD_CANCEL)

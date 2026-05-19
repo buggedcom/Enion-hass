@@ -168,9 +168,8 @@ In addition to the sensor entities above, the integration injects the full 90-da
 | `switch.enion_charge_1h` | Start a one-hour manual battery charging override |
 | `switch.enion_discharge_1h` | Start a one-hour manual battery discharging override |
 | `switch.enion_stop_1h` | Stop battery power flow for one hour |
-| `switch.enion_cancel_action` | Cancel an active manual battery override |
 
-Only the currently valid optimizer action switches are available in Home Assistant. When no manual override is active, the `charge`, `discharge`, and `stop` switches are available and `cancel action` is unavailable. When a manual override is active, those three switches become unavailable and `cancel action` becomes available.
+Only the currently valid optimizer action switches are available in Home Assistant. When no manual override is active, all three switches are available and off. When a manual override is active, the active switch remains available and on, while the other two become unavailable. Turning the active switch off cancels the current manual override.
 
 ### Calendars
 

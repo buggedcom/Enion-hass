@@ -170,6 +170,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Profits polling state
         self._profits_fetch_in_progress: bool = False
         self._profits_unsub: Any = None
+        self._last_optimizer_override_command: int | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -446,6 +447,8 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ]
         elif port_prefix == PORT_OPTIMIZER:
             self._store[DATA_OPTIMIZER].update(values)
+            if not self.is_optimizer_override_active():
+                self._last_optimizer_override_command = None
 
         self._notify_listeners()
 
@@ -707,12 +710,34 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return event_data.get("state") == "BATTERY_OPTIMIZER_STATE_OVERRIDE"
 
+    def get_active_optimizer_override_command(self) -> int | None:
+        """Infer which manual optimizer override is currently active."""
+        if not self.is_optimizer_override_active():
+            return None
+
+        if self._last_optimizer_override_command is not None:
+            return self._last_optimizer_override_command
+
+        battery_port_id = self.find_port_by_prefix(PORT_BATTERY, "0")
+        if battery_port_id is None:
+            return None
+
+        power = self.get_port_values(battery_port_id).get("power")
+        if power is None:
+            return None
+        if power > 0:
+            return -1_000_000
+        if power < 0:
+            return 1_000_000
+        return 0
+
     async def async_send_optimizer_override(self, value: int) -> None:
         """Send a manual optimizer override command to Enion."""
         port_id = self.find_optimizer_port_id()
         if port_id is None:
             raise ValueError("Battery optimizer port not found")
         await self._client.async_update_port_value(port_id, "override_power", value)
+        self._last_optimizer_override_command = None if value == 2**31 - 1 else value
 
     def get_optimizer_state(self) -> tuple[str | None, str | None, list[dict[str, Any]]]:
         """Get battery optimizer current state, next state/time, and full schedule.

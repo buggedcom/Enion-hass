@@ -9,7 +9,6 @@ from custom_components.enion.api import EnionClient
 from custom_components.enion.const import DOMAIN
 from custom_components.enion.coordinator import EnionCoordinator
 from custom_components.enion.switch import (
-    CMD_CANCEL,
     CMD_CHARGING,
     CMD_DISCHARGING,
     CMD_STOP,
@@ -48,14 +47,14 @@ def _make_switch(coordinator, entry, key: str) -> EnionOptimizerActionSwitch:
 
 
 class TestSwitchSetup:
-    async def test_setup_creates_four_entities(self, hass, coordinator, entry):
+    async def test_setup_creates_three_entities(self, hass, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE)
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         entities = []
 
         await async_setup_entry(hass, entry, entities.extend)
 
-        assert len(entities) == 4
+        assert len(entities) == 3
 
 
 class TestSwitchCommands:
@@ -86,27 +85,18 @@ class TestSwitchCommands:
 
         coordinator.async_send_optimizer_override.assert_awaited_once_with(CMD_STOP)
 
-    async def test_cancel_sends_cancel_command(self, coordinator, entry):
+    async def test_turning_off_active_switch_sends_cancel_command(self, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE)
         coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
-        entity = _make_switch(coordinator, entry, "enion_cancel_action")
-        coordinator.async_send_optimizer_override = AsyncMock()
-
-        await entity.async_turn_on()
-
-        coordinator.async_send_optimizer_override.assert_awaited_once_with(CMD_CANCEL)
-
-    async def test_cancel_turn_off_sends_cancel_command(self, coordinator, entry):
-        coordinator._seed_from_me(ME_RESPONSE)
-        coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
-        entity = _make_switch(coordinator, entry, "enion_cancel_action")
+        coordinator._last_optimizer_override_command = CMD_CHARGING
+        entity = _make_switch(coordinator, entry, "enion_charge_1h")
         coordinator.async_send_optimizer_override = AsyncMock()
 
         await entity.async_turn_off()
 
-        coordinator.async_send_optimizer_override.assert_awaited_once_with(CMD_CANCEL)
+        coordinator.async_send_optimizer_override.assert_awaited_once_with(2**31 - 1)
 
-    async def test_non_cancel_turn_off_is_noop(self, coordinator, entry):
+    async def test_turning_off_inactive_switch_is_noop(self, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE)
         entity = _make_switch(coordinator, entry, "enion_charge_1h")
         coordinator.async_send_optimizer_override = AsyncMock()
@@ -123,26 +113,23 @@ class TestSwitchAvailability:
         charge = _make_switch(coordinator, entry, "enion_charge_1h")
         discharge = _make_switch(coordinator, entry, "enion_discharge_1h")
         stop = _make_switch(coordinator, entry, "enion_stop_1h")
-        cancel = _make_switch(coordinator, entry, "enion_cancel_action")
 
         assert charge.available is True
         assert discharge.available is True
         assert stop.available is True
-        assert cancel.available is False
 
-    async def test_override_active_cancel_available_others_unavailable(self, coordinator, entry):
+    async def test_override_active_only_active_switch_available(self, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE)
         coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
+        coordinator._last_optimizer_override_command = CMD_CHARGING
 
         charge = _make_switch(coordinator, entry, "enion_charge_1h")
         discharge = _make_switch(coordinator, entry, "enion_discharge_1h")
         stop = _make_switch(coordinator, entry, "enion_stop_1h")
-        cancel = _make_switch(coordinator, entry, "enion_cancel_action")
 
-        assert charge.available is False
+        assert charge.available is True
         assert discharge.available is False
         assert stop.available is False
-        assert cancel.available is True
 
     async def test_missing_optimizer_port_all_entities_unavailable(self, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE_NO_OPTIMIZER)
@@ -151,15 +138,29 @@ class TestSwitchAvailability:
             entity = EnionOptimizerActionSwitch(coordinator, entry, description)
             assert entity.available is False
 
-    async def test_cancel_action_is_on_only_during_override(self, coordinator, entry):
+    async def test_active_switch_is_on_only_during_override(self, coordinator, entry):
         coordinator._seed_from_me(ME_RESPONSE)
-        cancel = _make_switch(coordinator, entry, "enion_cancel_action")
         charge = _make_switch(coordinator, entry, "enion_charge_1h")
+        discharge = _make_switch(coordinator, entry, "enion_discharge_1h")
 
-        assert cancel.is_on is False
         assert charge.is_on is False
+        assert discharge.is_on is False
 
         coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
+        coordinator._last_optimizer_override_command = CMD_CHARGING
 
-        assert cancel.is_on is True
+        assert charge.is_on is True
+        assert discharge.is_on is False
+
+    async def test_active_switch_inferred_from_battery_power_when_cache_missing(self, coordinator, entry):
+        coordinator._seed_from_me(ME_RESPONSE)
+        coordinator._handle_update(WS_UPDATE_OPTIMIZER_OVERRIDE)
+        battery_port_id = coordinator.find_port_by_prefix("22", "0")
+        coordinator._store["ports"][battery_port_id]["values"]["power"] = -1200
+        coordinator._last_optimizer_override_command = None
+
+        charge = _make_switch(coordinator, entry, "enion_charge_1h")
+        discharge = _make_switch(coordinator, entry, "enion_discharge_1h")
+
         assert charge.is_on is False
+        assert discharge.is_on is True
