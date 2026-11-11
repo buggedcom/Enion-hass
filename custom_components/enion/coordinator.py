@@ -47,7 +47,7 @@ _KNOWN_PORT_KEYS: dict[str, set[str]] = {
         "power", "energy", "rms_voltage", "cur_current", "phases"
     },
     PORT_PRICES: {
-        "base_ts", "timestep", "prices"
+        "base_ts", "timestep", "prices", "n_prices", "price_chksum"
     },
     PORT_WEATHER: {
         "base_ts", "timestep", "weathers"
@@ -172,6 +172,10 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._profits_unsub: Any = None
         self._last_optimizer_override_command: int | None = None
 
+        # Prices polling state
+        self._prices_fetch_in_progress: bool = False
+        self._prices_unsub: Any = None
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -181,6 +185,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._login_and_seed()
         await self._connect_ws()
         await self._fetch_and_store_profits()
+        await self._fetch_and_store_prices()
         self._profits_unsub = async_track_time_interval(
             self.hass, self._scheduled_profits_fetch, timedelta(hours=1)
         )
@@ -292,6 +297,9 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._profits_unsub is not None:
             self._profits_unsub()
             self._profits_unsub = None
+        if self._prices_unsub is not None:
+            self._prices_unsub()
+            self._prices_unsub = None
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
         if self._ws:
@@ -433,7 +441,11 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             timestep = values.get("timestep", 3600)
             if prices_raw and base_ts is not None:
                 self._store[DATA_PRICES] = [
-                    {"ts": base_ts + i * timestep, "price": p}
+                    {
+                        "ts": base_ts + i * timestep,
+                        "ts_to": base_ts + (i + 1) * timestep,
+                        "price": p,
+                    }
                     for i, p in enumerate(prices_raw)
                 ]
         elif port_prefix == PORT_WEATHER:
@@ -459,6 +471,7 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _scheduled_profits_fetch(self, _now: Any = None) -> None:
         """Called by async_track_time_interval every hour."""
         await self._fetch_and_store_profits()
+        await self._fetch_and_store_prices()
 
     async def _fetch_and_store_profits(self) -> None:
         """Fetch the rolling 90-day profit window and update the store + statistics."""
@@ -642,6 +655,65 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {"spot_saving": spot, "fcr_total": fcr, "total": spot + fcr}
 
     # ------------------------------------------------------------------
+    # Electricity prices polling
+    # ------------------------------------------------------------------
+
+    async def _scheduled_prices_fetch(self, _now: Any = None) -> None:
+        """Fetch electricity prices."""
+        await self._fetch_and_store_prices()
+
+    async def _fetch_and_store_prices(self) -> None:
+        """Fetch electricity prices for today and tomorrow and update the store."""
+        if self._prices_fetch_in_progress:
+            _LOGGER.debug("Prices fetch already in progress, skipping")
+            return
+
+        self._prices_fetch_in_progress = True
+        try:
+            token_age = time.monotonic() - self._last_login_at
+            if token_age >= _TOKEN_MAX_AGE:
+                _LOGGER.debug(
+                    "WS token age %.0fs >= %ds, re-logging in for prices fetch",
+                    token_age, _TOKEN_MAX_AGE,
+                )
+                await self._client.login(self._email, self._password)
+                self._last_login_at = time.monotonic()
+
+            now = utcnow()
+            from_dt = (now - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
+            to_dt = (now + timedelta(hours=48)).replace(minute=0, second=0, microsecond=0)
+            area = self._store[DATA_USER].get("country_iso_3166") or "FI"
+
+            prices_data = await self._client.fetch_prices(from_dt, to_dt, area=area)
+            if not isinstance(prices_data, list):
+                _LOGGER.warning("Unexpected prices data format: %s", type(prices_data))
+                return
+
+            parsed_prices = []
+            for item in prices_data:
+                ts_from = _parse_iso8601_to_unix(item.get("from"))
+                ts_to = _parse_iso8601_to_unix(item.get("to"))
+                price = item.get("price")
+                if ts_from is not None and price is not None:
+                    parsed_prices.append(
+                        {
+                            "ts": ts_from,
+                            "ts_to": ts_to,
+                            "price": price,
+                            "forecast": item.get("forecast", False),
+                        }
+                    )
+
+            if parsed_prices:
+                self._store[DATA_PRICES] = parsed_prices
+                _LOGGER.debug("Stored %d electricity price entries", len(parsed_prices))
+                self._notify_listeners()
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.error("Failed to fetch electricity prices: %s", exc)
+        finally:
+            self._prices_fetch_in_progress = False
+
+    # ------------------------------------------------------------------
     # Convenience accessors used by entities
     # ------------------------------------------------------------------
 
@@ -664,9 +736,10 @@ class EnionCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = int(time.time())
         for entry in self._store[DATA_PRICES]:
             ts = entry.get("ts", 0)
-            if ts <= now < ts + 3600:
+            ts_to = entry.get("ts_to") or (ts + 3600)
+            if ts <= now < ts_to:
                 price = entry.get("price")
-                # API returns price in tenths of cents, divide by 10 for ct/kWh
+                # API returns price in tenths of cents (or €/MWh), divide by 10 for ct/kWh
                 return price / 10 if price is not None else None
         return None
 

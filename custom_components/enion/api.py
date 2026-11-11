@@ -13,6 +13,7 @@ from .const import (
     API_LOGIN,
     API_ME,
     API_PORTS,
+    API_PRICES,
     API_PROFITS,
     WS_URL,
     WS_VERSION,
@@ -172,6 +173,41 @@ class EnionClient:
             _LOGGER.debug("Profits response status: %d", resp.status)
             if resp.status != 200:
                 raise EnionApiError(f"profits returned HTTP {resp.status}")
+            return await resp.json()
+
+    async def fetch_prices(
+        self,
+        from_dt: datetime,
+        to_dt: datetime,
+        area: str = "FI",
+    ) -> list[dict[str, Any]]:
+        """GET /api/v1/data/prices?from=...&to=...&area=...
+
+        Returns a list of electricity price records for the requested interval.
+        """
+        params = {
+            "from": from_dt.strftime("%Y-%m-%dT%H:00:00Z"),
+            "to": to_dt.strftime("%Y-%m-%dT%H:00:00Z"),
+            "area": area,
+        }
+        headers = (
+            {"Authorization": f"Bearer {self._ws_token}"} if self._ws_token else {}
+        )
+        _LOGGER.debug(
+            "Fetching electricity prices from=%s to=%s area=%s",
+            params["from"],
+            params["to"],
+            area,
+        )
+        async with self._session.get(
+            API_PRICES,
+            params=params,
+            headers=headers,
+            timeout=_HTTP_TIMEOUT,
+        ) as resp:
+            _LOGGER.debug("Prices response status: %d", resp.status)
+            if resp.status != 200:
+                raise EnionApiError(f"prices returned HTTP {resp.status}")
             return await resp.json()
 
     async def async_update_port_value(self, port_id: int, name: str, value: Any) -> None:
